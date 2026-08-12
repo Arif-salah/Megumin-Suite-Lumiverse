@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0",
+  "name": "Megumin Suite",
+  "identifier": "megumin_suite",
+  "author": "KazumaONIISAN",
+  "github": "https://github.com/KazumaONIISAN/megumin-suite-lumiverse",
+  "homepage": "https://github.com/KazumaONIISAN/megumin-suite-lumiverse",
+  "description": "Narrative engine for Lumiverse — personality, chain-of-thought, story config and tracker blocks assembled into the prompt before every generation.",
+  "permissions": ["interceptor", "generation"],
+  "entry_backend": "dist/backend.js",
+  "entry_frontend": "dist/frontend.js",
+  "interceptorTimeoutMs": 20000
+}

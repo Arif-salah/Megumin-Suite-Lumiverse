@@ -1,0 +1,16 @@
+{
+  "name": "megumin-suite-lumiverse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run build:backend && bun run build:frontend",
+    "build:backend": "bun build src/backend.ts --outfile dist/backend.js --target bun",
+    "build:frontend": "bun build src/frontend.ts --outfile dist/frontend.js --target browser",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "lumiverse-spindle-types": "latest",
+    "typescript": "^5.6.0"
+  }
+}
