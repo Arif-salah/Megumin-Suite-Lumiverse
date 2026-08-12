@@ -1,13 +1,30 @@
 {
-  "version": "0.1.0",
+  "version": "9.0.0",
   "name": "Megumin Suite",
   "identifier": "megumin_suite",
-  "author": "KazumaONIISAN",
-  "github": "https://github.com/KazumaONIISAN/megumin-suite-lumiverse",
-  "homepage": "https://github.com/KazumaONIISAN/megumin-suite-lumiverse",
-  "description": "Narrative engine for Lumiverse — personality, chain-of-thought, story config and tracker blocks assembled into the prompt before every generation.",
-  "permissions": ["interceptor", "generation"],
+  "author": "Archkr",
+  "github": "https://github.com/Archkr/Lumiverse-Megumin-Suite",
+  "homepage": "https://github.com/Archkr/Lumiverse-Megumin-Suite",
+  "description": "Megumin Suite ported to Lumiverse: V9 narrative engines, memory, NPC tracking, ban lists, story planning, and image generation.",
+  "permissions": [
+    "interceptor",
+    "generation",
+    "chat_mutation",
+    "chats",
+    "characters",
+    "image_gen",
+    "images",
+    "presets",
+    "ui_panels",
+    "app_manipulation",
+    "memories"
+  ],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",
-  "interceptorTimeoutMs": 20000
+  "minimum_lumiverse_version": "0.1.0",
+  "storage_seed_files": [
+    { "from": "img/", "to": "img/", "overwrite": false },
+    { "from": "Screenshots/", "to": "Screenshots/", "overwrite": false }
+  ],
+  "interceptorTimeoutMs": 30000
 }

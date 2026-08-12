@@ -4,11 +4,12 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "allowJs": true,
+    "checkJs": false,
     "outDir": "./dist",
     "declaration": false,
     "skipLibCheck": true,
-    "noEmit": true,
-    "lib": ["ESNext", "DOM"]
+    "types": ["bun-types"]
   },
   "include": ["src"]
 }

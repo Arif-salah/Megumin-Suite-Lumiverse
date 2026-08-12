@@ -1,78 +1,150 @@
-# Megumin Suite for Lumiverse
+<div align="center">
 
-A port of the Megumin Suite narrative engine from SillyTavern to Lumiverse's
-[Spindle](https://docs.lumiverse.chat) extension framework.
+<!-- Replace with your actual banner image -->
+<img src="Screenshots/banner.png" alt="Megumin Suite Banner" width="100%">
 
-**This build ships one slice: engine injection.** The profile you set in the panel is
-compiled into a token dictionary and substituted into the prompt before every
-generation. The side panel, Memory Core, Story Planner, image generation and NPC
-Bank are not ported yet.
+[![Lumiverse](https://img.shields.io/badge/Lumiverse-1.0+-blue.svg?style=for-the-badge&logo=codeigniter)](https://github.com/Archkr/Lumiverse)
+[![Version](https://img.shields.io/badge/Version-V7-green.svg?style=for-the-badge)](#)
+[![License](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-purple.svg?style=for-the-badge)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
-## Install
+> *"Everything your preset should have been: persistent memory, chain-of-thought reasoning, automated NPC tracking, and ComfyUI image generation in a single install."*
 
-Lumiverse installs from a GitHub repo — Extensions panel, or
-`POST /api/v1/spindle/install`. If `dist/` is absent it builds `src/` with
-`bun build` during install, so committing `dist/` is optional.
+**Megumin Suite** is a full-stack overhaul to how Lumiverse presets work. It replaces your prompt engineering, your memory system, your NPC management, and your image pipeline — all in one extension. V7 adds advanced **Vector Memory**, automated **NPC Tracking**, and a strict **5-Phase Chain of Thought** reasoning framework.
 
-To build locally you need [Bun](https://bun.sh):
+[Features](#-core-features) • [Installation](#-installation) • [The V7 Engine](#-the-v7-narrative-engines) • [Memory Core](#-memory-core-3-tier-context) • [Image Gen](#-image-gen-kazuma)
 
-```bash
-bun install && bun run build
-```
+</div>
 
-Typechecking works without Bun:
+---
 
-```bash
-npm install && npx tsc --noEmit
-```
+## 🚀 What's New in V7?
 
-## Permissions
+The V7 update is a ground-up rewrite featuring a  massive token savings, and advanced contextual awareness.
 
-| Permission | Why |
-|---|---|
-| `interceptor` | The whole point — rewriting the prompt before it reaches the model. |
-| `generation` | Reserved for the utility generations (summaries, story plans, image prompts) that land in later slices. Nothing in this build calls it. |
+*    **V7 CoT Framework:** A structured 5-phase reasoning system that makes the AI build ground truth, map NPC knowledge, and self-correct before writing a single word.
+*    **Memory Core (3-Tier Context):** Automatically summarizes old messages and pushes them into a Vector Database (LanceDB). Intercepts and scrubs them from the prompt payload to save massive amounts of tokens.
+*    **Automated NPC Bank:** The AI detects new characters, writes dossiers on them, saves them, and injects them back into the prompt only when relevant. It even auto-generates ComfyUI portraits for them!
+*    **Modular Engine Toggles:** Turn off specific engine behaviors (like Cultural Anchoring or OOC protocols) without breaking the core logic.
 
-Both degrade gracefully. Without `interceptor` the panel still edits the profile and
-the extension logs a denial rather than failing a generation.
+---
 
-`interceptorTimeoutMs` is set to 20000. Substitution itself is sub-millisecond; the
-headroom is for the retrieval work the Memory Core slice will add.
+## 🌟 Core Features
 
-## How it works
+###  The V7 Engines
+Choose the core ruleset that drives your world's logic and tone.
+*   **V7 Core:** Grounded, cinematic, and patient. Scales with scene density and matches prose to content. The perfect middle ground.
+*   **V7 Reality:** Full simulation mode. No plot armor. Strict physical laws. Consequences are real and persistent.
+*   **V7 Gentle:** A softer, quieter, and more atmospheric pacing. Focuses on immersion, mood, and lingering emotions.
 
-```
-spindle.json  ──▶  src/backend.ts   registerInterceptor → buildBaseDict → substituteTokens
-                   src/frontend.ts  drawer tab → sendToBackend → profile patch
-```
+###  Memory Core (3-Tier Context)
+Never lose track of the story, and stop wasting tokens on massive context windows.
+*   **Working Memory:** The immediate chat history.
+*   **Short-Term Memory:** Background-generated AI summaries of previous chunks.
+*   **Long-Term Vault (Vector DB):** Uses **TF-IDF Keyword Matching** or **Lumiverse memory/semantic retrieval** to silently fetch archived memories and inject them into the prompt only when relevant.
+*   **Prompt Interceptor:** Physically wipes archived messages from the prompt payload saving thousands of tokens.
 
-- **`src/engine/`** is pure and host-free. Every function takes the profile as an
-  argument, so the same code builds the prompt for a live generation and the panel's
-  preview. Nothing here imports `spindle`.
-  - `database.ts` — the engine/personality/CoT prompt corpus, copied verbatim from
-    the SillyTavern build.
-  - `dict.ts` — `buildBaseDict()`, the `[[token]]` → text map.
-  - `blocks.ts` — the tracker block registry and the `<Blocks>` envelope.
-  - `config-block.ts` / `story-config-fields.ts` — the `<config>` block.
-  - `substitute.ts` — running the dict over a message, and sweeping unfilled tokens.
-- **`src/backend/profile-store.ts`** — persistence. One store, one rule:
-  `chats/{chatId}.json` if it exists, otherwise `profile.json`.
-- **`src/frontend/panel.ts`** — the drawer tab. Holds no engine knowledge; every
-  edit round-trips through the backend and re-renders from what comes back.
+###  Automated NPC Bank
+A persistent character database that tracks every NPC accurately across sessions.
+*   **Auto-Extraction:** When a significant NPC is introduced, the AI writes a "dossier" (Name, Appearance, Inner Circle, Hidden Layers, Agenda) and saves it to the bank.
+*   **Dynamic Injection:** Scans your last 4 messages and injects relevant NPC dossiers into the prompt so the AI remembers them accurately.
+*   **AI Portrait Studio:** Click a button to have ComfyUI automatically generate a character portrait based purely on the AI's physical description of them.
 
-## What changed from the SillyTavern build
+###  Advanced Chain of Thought (CoT)
+Control the AI's internal reasoning process before it outputs text.
+*   **The 5-Phase Audit:** *Ground Truth ➔ Plot Engine ➔ Scene Design ➔ Active Draft ➔ Correction Loop*.
+*   **Knowledge Firewall:** Forces the AI to trace *how* an NPC knows something, preventing them from mind-reading the user's internal narration.
+*   **Gemini Thinking:** A special toggle that injects triple `<think>` tags to bypass Google's strict reasoning refusal filters.
+> ⚠️ **Note:** if you enable Gemini Thinking navigate to 'AI Response Formatting', 'Reasoning', activate 'Auto-Parse', and set the Prefix to `<think>` and Suffix to `</think>`.
 
-| SillyTavern | Here |
-|---|---|
-| `CHAT_COMPLETION_PROMPT_READY` mutating a shared array in place | `spindle.registerInterceptor` returning a new array |
-| `extension_settings` + `chat_metadata`, kept in step by a debounced writer | one store, `resolveProfile()` |
-| `useMeguminEngine()` switching presets via the DOM dropdown, plus a 3.5s sleep | `spindle.generate.quiet({ connection_id })` — lands with the first utility slice |
-| `activeXRequest` module flags + `messages.length = 0` + `___PS_DUMMY___` | deleted; utility calls pass their own messages directly |
-| `localProfile` module global | profile passed as an argument everywhere |
+###  Image Gen Kazuma (ComfyUI)
+Seamlessly wire up your local ComfyUI server to generate images while you play.
+*   **Auto-Trigger:** The AI decides when a moment is "picture-worthy" and outputs a hidden image tag, triggering ComfyUI in the background.
+*   **Overswipe Regeneration:** Simply swipe right on the last image in a gallery to instantly regenerate the prompt.
+*   **LoRA Lab & Parameters:** Full control over Steps, CFG, Denoise, and 4 LoRA slots directly inside Lumiverse.
 
-## Unported tokens
+###  Dynamic Ban List (AI Slop Detector)
+Tired of the AI saying *"a shiver ran down your spine"* or *"testament to..."*?
+*   Click **Analyze Chat** to have the AI scan your last 50 messages and identify the top 5 repetitive crutch phrases it's using.
+*   Automatically converts them into strict negative rules and bans them from future generations.
 
-Tokens owned by subsystems that haven't landed are **declared empty**, not omitted —
-see `UNPORTED_TOKENS` in `dict.ts`. The substituter strips an empty token along with
-the line it sits on, so a preset carrying `[[long-Memory]]` or `[[banlist]]` stays
-clean until the subsystem that fills it arrives.
+###  Story Planner &  Blocks
+*   **Story Planner:** Brainstorms and tracks 10+ future plot milestones in the background.
+*   **World State Tracker:** Injects a collapsible dashboard tracking the date, weather, PC's physical state, and NPC agendas.
+*   **NPC Inner Chatter:** Forces the AI to output a hidden block of dialogue showing what the NPCs are *actually* thinking behind their masks.
+
+---
+
+## ⚙️ Installation
+
+1. Open Lumiverse.
+2. Go to the **Extensions** tab (the puzzle icon).
+3. Click **Add Extension**.
+4. Paste the repository URL:
+   ```text
+   https://github.com/Archkr/Lumiverse-Megumin-Suite
+   ```
+5. Download the Lumiverse preset JSONs files from this repo: https://github.com/Archkr/Lumiverse-Megumin-Suite/tree/main/Presets
+> ⚠️ **Note:** If you download these on your phone and your browser renames them to `.json.txt`, you **must** use a file manager to rename them and delete the `.txt` part. Furthermore, make sure the Engine file is named EXACTLY `Megumin Engine.json` before you import it. The Suite file's name doesn't matter, but the Engine must be exact.
+6. Open Lumiverse, go to the **Loom** tab.
+7. Click the **Import Loom** button (the 3 stacked dots) and upload the json files.
+8. Once imported, open your preset dropdown and **make sure "Megumin Suite" is the active preset.** The extension handles the Engine silently in the background.
+
+
+~~or just watch the **Install video:** [youtube Video](https://www.youtube.com/watch?v=Q-iaz9mBFrA)~~ 
+
+
+> **💡 Pro Tip:** - Megumin Suite V7 DS4 is for Deepseek or GLM and Similar models.
+                      - Megumin Suite V7 Gemini is for gemini models.
+if you have model not here just try.
+
+> ⚠️ **Important:** Megumin Suite uses several **Regex scripts** that clean and format messages before they're sent to the AI. After importing them into Lumiverse, go to the **Regex** tab and **make sure all Megumin-related regex entries are enabled**.
+
+---
+
+## 🕹️ Quick Start Guide
+
+<div align="center">
+  <img src="Screenshots/Screenshot1.png" alt="Screenshot 1" width="200">
+  <img src="Screenshots/Screenshot2.png" alt="Screenshot 2" width="200">
+  <img src="Screenshots/Screenshot3.png" alt="Screenshot 3" width="200">
+  <img src="Screenshots/Screenshot4.png" alt="Screenshot 4" width="200">
+</div>
+
+1. **Select an Engine:** Open the Megumin Suite menu (wand icon) and pick a Core Engine (e.g., **V7 Core**).
+2. **Set your Style:** Go to the Writing Style tab. Choose a precooked style like *Sensory-Rich* or use the AI to generate a custom one.
+3. **Enable CoT:** Go to the Chain of Thought tab and select **V7 CoT** (highly recommended for complex logic).
+4. **Enable Memory Core (Optional but Recommended):** Go to Tab 10, enable the Memory Core, and click **Apply & Extract Pending**.
+5. **Chat!** The extension will handle all prompt injection, formatting, and memory management silently in the background.
+
+> **💡 Pro Tip:** If you want to see exactly what Megumin Suite is sending to the AI under the hood, enable **Prompt Payload Preview** in the Global Settings tab.
+
+---
+
+## 🛠️ Troubleshooting & Tips
+
+
+*   **LLMs:** Designed for highly capable instruction-following models (Claude 4.6 Sonnet/Opus, DeepSeek v4, Gemini 3.1 pro/flash, GLM 5.1). Smaller local models may struggle with the strict V7 CoT instructions.
+*  **Does this extension mess with my other presets?** No — your other presets will work just fine. Megumin Suite only injects its rules into its own designated preset (Megumin Suite). Your existing presets remain completely untouched.
+* **Vector Storage (Optional):** if you are using semantic retrieval in the Memory Core, use Lumiverse's memory/embedding settings to choose a lighter embedding model if the default is too heavy for your PC.
+* **Old Versions:** Legacy docs are here: [Megumin Suite v4 Legacy Readme](https://github.com/Arif-salah/Megumin-Suite/tree/V4.1)  [Megumin Suite v5 Legacy Readme](https://github.com/Arif-salah/Megumin-Suite/tree/V5) [Megumin Suite v6 Legacy Readme](https://github.com/Arif-salah/Megumin-Suite/tree/V6)
+
+---
+
+## 🤝 Credits & Acknowledgements
+
+*   Built natively for [Lumiverse](https://github.com/Archkr/Lumiverse).
+*   MVU Compatibility integration inspired by [KritBlade's MVU Game Maker](https://github.com/KritBlade/MVU_Game_Maker).
+
+---
+
+<div align="center">
+
+### 💜 Support the Project
+
+Megumin Suite is free and always will be. If it saved you hours of prompt engineering or made your sessions better, consider tossing a few bucks it keeps development alive and the updates coming.
+
+🪙 **Crypto (LTC):** `LSjf1DczHxs3GEbkoMmi1UWH2GikmXDtis`
+
+⭐ *Not in a position to donate? Starring the repo and sharing it helps just as much.*
+
+</div>
