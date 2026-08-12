@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { clone, mergeProfile } from "./defaults";
 import { REQUIRED_PLACEHOLDER_FEATURES, auditPresetPlaceholders, buildPromptMessages, estimateMeguminPayloadTokens, getLogic } from "./prompt-engine";
-import { extractNpcBlocks, relevantChunks } from "./text";
+import { extractNpcBlocks } from "./text";
 import { patchComfyWorkflow } from "./image-workflow";
 import { DEFAULT_PROFILE } from "./defaults";
-import type { ChatContext, ChatMessage, EngineMode, LlmMessage, MemoryChunk } from "./types";
+import type { ChatContext, ChatMessage, EngineMode, LlmMessage } from "./types";
 
 const frontendSource = readFileSync(new URL("./frontend.ts", import.meta.url), "utf8");
 const backendSource = readFileSync(new URL("./backend.ts", import.meta.url), "utf8");
@@ -30,12 +30,10 @@ describe("Megumin UI parity audit", () => {
       "Attach extra modules that appear at the end of every response.",
       "Control the AI's internal reasoning process before it writes.",
       "Wire up ComfyUI to auto-generate scene images during roleplay.",
-      "Advanced 3-Tier Context & History Management.",
       "V7 Modules (Turn off to disable)",
       "Dialogue / Narration Ratio",
       "ComfyUI Server & Workflow",
       "Send Portraits to AI",
-      "Context Allocation Dashboard",
       "Requires V6",
       "Cinematic Sounds",
       "Important:",
@@ -43,16 +41,12 @@ describe("Megumin UI parity audit", () => {
       "Megumin Image Preset",
       "id=\"ig_main_content\"",
       "id=\"npc_main_content\"",
-      "id=\"mem_main_content\"",
       "id=\"dev_btn_new\"",
       "id=\"dev_btn_import\"",
       "id=\"dev_save_mode\"",
-      "id=\"mem_bar_work\"",
-      "id=\"mem_vault_search\"",
       "id=\"ps_btn_scan_slop\"",
       "id=\"ig_enable_card\"",
       "id=\"npc_enable_card\"",
-      "id=\"mem_enable_card\"",
       "slider.id = \"dnr_slider\"",
       "narrValue.id = \"lbl_narr\"",
       "preview.id = \"dnr_preview\"",
@@ -159,7 +153,6 @@ describe("Megumin preset bridge", () => {
     expect(spindleManifest.permissions).toContain("presets");
     expect(backendSource).toContain("___PS_STORY_PLAN___");
     expect(backendSource).toContain("___PS_IMAGE_GEN___");
-    expect(backendSource).toContain("___PS_MEMORY_SUMMARIZE___");
   });
 });
 
@@ -245,7 +238,6 @@ describe("Megumin ST function coverage audit", () => {
       "function renderBanList",
       "function renderImage",
       "function renderNpc",
-      "function renderMemory",
       "function renderDev"
     ];
     for (const marker of frontendMappings) expect(frontendSource).toContain(marker);
@@ -254,7 +246,6 @@ describe("Megumin ST function coverage audit", () => {
       "buildPromptMessages",
       "story:generate",
       "banlist:analyze",
-      "memory:process",
       "npc:scan",
       "image:manual",
       "engine:save",
@@ -303,9 +294,6 @@ describe("Megumin prompt assembly", () => {
     profile.imageGen.triggerMode = "always";
     profile.npcBank.enabled = true;
     profile.npcBank.npcs = [{ name: "Arue", appearance: "Crimson eyes", timestamp: 1 }];
-    profile.memoryCore.enabled = true;
-    profile.memoryCore.shortTermChunks = [{ id: "m0", startIndex: 0, endIndex: 0, summary: "Arue warned them about the bell tower.", timestamp: 1 }];
-    profile.memoryCore.longTermVault = [{ id: "m1", startIndex: 1, endIndex: 1, text: "The archive key is hidden under the stage.", timestamp: 2 }];
 
     const chatMessages: ChatMessage[] = [
       { id: "0", role: "user", content: "Arue appears near the festival stage." }
@@ -336,8 +324,6 @@ describe("Megumin prompt assembly", () => {
     expect(joined).toContain("<img prompt=\"prompt\">");
     expect(joined).toContain("[RELEVANT NPCs]");
     expect(joined).toContain("<npc_dossier>");
-    expect(joined).toContain("LONG-TERM MEMORY VAULT");
-    expect(joined).toContain("SHORT-TERM MEMORY");
     for (const feature of REQUIRED_PLACEHOLDER_FEATURES) {
       for (const placeholder of feature.placeholders) expect(joined).not.toContain(placeholder);
     }
@@ -656,29 +642,10 @@ describe("Megumin prompt assembly", () => {
     expect(audited).toBeGreaterThan(0);
   });
 
-  test("replaces uploaded preset placeholders and prunes archived prompt turns", () => {
+  test("replaces uploaded preset placeholders and strips the dropped memory hooks", () => {
     const profile = clone(DEFAULT_PROFILE);
     // Asserts on V7's <system_config> prompt body, so the engine is pinned.
     profile.mode = "v7-core";
-    profile.memoryCore.enabled = true;
-    profile.memoryCore.shortTermChunks = [
-      {
-        id: "m0",
-        startIndex: 0,
-        endIndex: 0,
-        summary: "The northern bridge collapsed during the ashfall.",
-        timestamp: 1700000000000
-      }
-    ];
-    profile.memoryCore.longTermVault = [
-      {
-        id: "m1",
-        startIndex: 1,
-        endIndex: 1,
-        text: "The ruby key unlocks the archive shrine beneath the guild hall.",
-        timestamp: 1700000000001
-      }
-    ];
 
     const chatMessages: ChatMessage[] = [
       { id: "0", role: "user", content: "The party crossed the northern bridge while ash fell for hours." },
@@ -686,35 +653,23 @@ describe("Megumin prompt assembly", () => {
       { id: "2", role: "user", content: "We should use the ruby key now." }
     ];
     const incoming: LlmMessage[] = [
-      { role: "system", content: "[[prompt1]]\n[[long-Memory]]\n[[Short-memory]]\n[[npc_dossier2]]" },
+      { role: "system", content: ["[[prompt1]]", "[[long-Memory]]", "[[Short-memory]]", "[[npc_dossier2]]"].join("\n") },
       ...chatMessages.map((message) => ({ role: message.role, content: message.content }))
     ];
 
     const result = buildPromptMessages(incoming, chatMessages, profile, [], context);
     const joined = result.messages.map((message) => typeof message.content === "string" ? message.content : "").join("\n");
 
-    expect(result.prunedCount).toBe(2);
     expect(joined).toContain("<system_config>");
-    expect(joined).toContain("LONG-TERM MEMORY VAULT");
-    expect(joined).toContain("ruby key unlocks the archive shrine");
+    // Memory Core is dropped from this port, but its hooks must still be swept so a
+    // preset carrying them never ships raw tokens to the model.
     expect(joined).not.toContain("[[long-Memory]]");
-    expect(result.messages.some((message) => message.content === chatMessages[0].content)).toBe(false);
+    expect(joined).not.toContain("[[Short-memory]]");
+    // Nothing prunes chat turns any more, so every message survives.
+    expect(result.prunedCount).toBe(0);
+    expect(result.messages.some((message) => message.content === chatMessages[0].content)).toBe(true);
     expect(result.changedMessages.length).toBeGreaterThan(0);
     expect(result.breakdown.some((entry) => entry.name?.includes("Placeholder Injection"))).toBe(false);
-  });
-});
-
-describe("Megumin memory retrieval", () => {
-  test("ranks TF-IDF chunks by current scene keywords", () => {
-    const vault: MemoryChunk[] = [
-      { id: "guild", startIndex: 0, endIndex: 1, text: "Ruby key archive shrine guild hall secret lock.", timestamp: 1 },
-      { id: "weather", startIndex: 2, endIndex: 3, text: "Rainstorm market stalls lanterns and muddy boots.", timestamp: 2 },
-      { id: "camp", startIndex: 4, endIndex: 5, text: "Campfire stew blankets and quiet road songs.", timestamp: 3 }
-    ];
-
-    const [best] = relevantChunks(vault, "The party studies the ruby key beside the archive shrine.", 1);
-
-    expect(best.id).toBe("guild");
   });
 });
 
@@ -810,5 +765,97 @@ describe("Megumin V9 profile plumbing", () => {
     expect(round.blockStack.custom[0].tag).toBe("Weather");
     expect(round.worldState).toEqual({ compactEnabled: true, fullFreq: 3 });
     expect(round.statBlocks.bonds.fields.some((f) => f.label === "Jealousy")).toBe(true);
+  });
+});
+
+describe("Megumin CoT picker", () => {
+  const models = getLogic().models.map((model) => model.id);
+  const split = (id: string) => {
+    const match = /^cot-(.+)-([a-z]{2,8})$/.exec(id);
+    return match ? { type: match[1], lang: match[2] } : null;
+  };
+  const typeIds = () => {
+    const ids = new Set<string>();
+    for (const id of models) {
+      if (id === "cot-off") continue;
+      const parts = split(id);
+      if (parts) ids.add(parts.type);
+    }
+    return [...ids].sort((a, b) => b.length - a.length);
+  };
+  const resolveType = (model: string) => {
+    if (model === "cot-off") return "off";
+    for (const type of typeIds()) if (model.startsWith(`cot-${type}-`)) return type;
+    return split(model)?.type || "off";
+  };
+
+  test("every CoT family in the corpus has a label in the picker", () => {
+    // The V8/V9 frameworks shipped in the data but were absent from the hardcoded
+    // picker list, so a V9 profile displayed as "CoT V1" and any click on the tab
+    // overwrote it with a V1 model.
+    for (const type of typeIds()) {
+      expect(frontendSource).toContain(`"${type}"`);
+    }
+    for (const type of ["v9", "v9-lite", "v9-director", "v9-immersion", "v9-hybrid", "v8", "v8-fusion", "v7.5"]) {
+      expect(typeIds()).toContain(type);
+      expect(frontendSource).toContain(`"${type}"`);
+    }
+  });
+
+  test("a model id resolves to its own family, longest match winning", () => {
+    expect(resolveType("cot-v9-english")).toBe("v9");
+    expect(resolveType("cot-v9-lite-english")).toBe("v9-lite");
+    expect(resolveType("cot-v9-immersion-english")).toBe("v9-immersion");
+    expect(resolveType("cot-v8-fusion-english")).toBe("v8-fusion");
+    expect(resolveType("cot-v7.5-english")).toBe("v7.5");
+    expect(resolveType("cot-v6-lite-jp")).toBe("v6-lite");
+    expect(resolveType("cot-off")).toBe("off");
+    // The default must round-trip, or the tab misreports the active framework.
+    expect(resolveType(DEFAULT_PROFILE.model)).toBe("v9");
+  });
+
+  test("a family never advertises a language it was not written in", () => {
+    for (const type of typeIds()) {
+      const langs = models.filter((id) => split(id)?.type === type).map((id) => split(id)!.lang);
+      for (const lang of langs) {
+        expect(models).toContain(`cot-${type}-${lang}`);
+      }
+      // V9/V8/V7 are English-only; a French option would name a model that does
+      // not exist, which silently disables thinking.
+      if (type.startsWith("v9") || type.startsWith("v8") || type.startsWith("v7")) {
+        expect(langs).toEqual(["english"]);
+      }
+    }
+  });
+});
+
+describe("Megumin Memory Core removal", () => {
+  test("no Memory Core surface survives in the source", () => {
+    // Dropped deliberately from this port. These assertions exist so a later
+    // merge cannot quietly reintroduce half of it.
+    for (const source of [frontendSource, backendSource]) {
+      expect(source).not.toContain("memoryCore");
+      expect(source).not.toContain("longTermVault");
+      expect(source).not.toContain("shortTermChunks");
+    }
+    expect(backendSource).not.toContain("processMemory");
+    expect(backendSource).not.toContain("___PS_MEMORY_SUMMARIZE___");
+    expect(frontendSource).not.toContain("renderMemory");
+    // The permission it needed must go with it.
+    expect(spindleManifest.permissions).not.toContain("memories");
+  });
+
+  test("the retired memory hooks still resolve to nothing rather than leaking", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    const built = buildPromptMessages(
+      [{ role: "system", content: "A\n[[long-Memory]]\n[[Short-memory]]\nB" }],
+      [],
+      profile,
+      [],
+      context
+    );
+    expect(built.messages[0].content).toBe("A\nB");
+    // The audit must not ask a preset for hooks the port no longer fills.
+    expect(REQUIRED_PLACEHOLDER_FEATURES.some((feature) => feature.id === "memory-core")).toBe(false);
   });
 });

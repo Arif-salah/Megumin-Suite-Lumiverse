@@ -45,15 +45,14 @@ const SYNCABLE_PROFILE_KEYS = new Set([
   "banList",
   "banListBackend",
   "imageGen",
-  "npcBank",
-  "memoryCore"
+  "npcBank"
 ]);
 let utilityBypassDepth = 0;
 let activeUtilityRequest: { messages: Array<{ role: "system" | "user" | "assistant"; content: string }>; trigger: string } | null = null;
 
 type PresetKind = "engine" | "image";
 type MeguminPresetKey = PresetKind | "suite-ds4" | "suite-gemini" | "suite-v91";
-type UtilityTrigger = "storyPlan" | "banList" | "memorySummary" | "imagePrompt" | "npcPortrait" | "dummyOrder";
+type UtilityTrigger = "storyPlan" | "banList" | "imagePrompt" | "npcPortrait" | "dummyOrder";
 
 type PresetBridgeState = {
   enginePresetId?: string;
@@ -75,7 +74,6 @@ const MEGUMIN_PRESET_TARGETS: Record<MeguminPresetKey, { name: string; stateKey:
 const UTILITY_TRIGGERS: Record<UtilityTrigger, string> = {
   storyPlan: "___PS_STORY_PLAN___",
   banList: "___PS_BANLIST___",
-  memorySummary: "___PS_MEMORY_SUMMARIZE___",
   imagePrompt: "___PS_IMAGE_GEN___",
   npcPortrait: "___PS_NPC_PFP___",
   dummyOrder: "___PS_DUMMY___"
@@ -492,62 +490,6 @@ function lastAssistant(messages: ChatMessage[]): ChatMessage | null {
   return null;
 }
 
-async function processMemory(scope: string, chatId: string, userId?: string): Promise<MeguminProfile> {
-  const profile = await loadProfile(scope, userId);
-  const mem = profile.memoryCore;
-  const messages = await getMessages(chatId);
-  const real = messages
-    .map((msg, index) => ({ msg, index }))
-    .filter((item) => item.msg.role !== "system" && cleanChatText(item.msg.content).length > 0);
-
-  if (!mem.enabled || real.length <= mem.workingLimit) return profile;
-  const archivedIds = new Set([...mem.shortTermChunks, ...mem.longTermVault].map((chunk) => chunk.id));
-  const effectiveLimit = mem.architecture === "raw_long" ? mem.workingLimit : mem.workingLimit + mem.shortTermLimit;
-  const vaultCutoff = Math.max(0, real.length - effectiveLimit);
-  const archivable = real.slice(0, real.length - mem.workingLimit);
-
-  for (let offset = 0; offset < archivable.length; offset += 10) {
-    const chunk = archivable.slice(offset, offset + 10);
-    if (chunk.length === 0) continue;
-    const startIndex = chunk[0].index;
-    const endIndex = chunk[chunk.length - 1].index;
-    const id = `${startIndex}-${endIndex}`;
-    if (archivedIds.has(id)) continue;
-    const text = chunk.map((item) => `${item.msg.role}: ${cleanChatText(item.msg.content)}`).join("\n\n");
-    if (offset < vaultCutoff || mem.architecture === "raw_long") {
-      mem.longTermVault.push({ id, startIndex, endIndex, text, timestamp: Date.now() });
-      archivedIds.add(id);
-      continue;
-    }
-
-    const summary = await generateQuiet([
-      {
-        role: "system",
-        content: "You are an expert narrative condenser. Summarize important story events and meaningful dialogue. Remove flowery prose and trivial motion. Do not quote dialogue unless necessary."
-      },
-      { role: "user", content: `Summarize this chat chunk clearly:\n\n<chat>\n${text}\n</chat>` }
-    ], { backend: mem.backend, presetKind: "engine", userId, trigger: "memorySummary" });
-    mem.shortTermChunks.push({ id, startIndex, endIndex, summary, timestamp: Date.now() });
-    archivedIds.add(id);
-  }
-
-  const shortCutoffIndex = real.length <= effectiveLimit ? 0 : real[real.length - effectiveLimit]?.index ?? 0;
-  for (let index = mem.shortTermChunks.length - 1; index >= 0; index -= 1) {
-    const chunk = mem.shortTermChunks[index];
-    if (chunk.endIndex < shortCutoffIndex) {
-      mem.shortTermChunks.splice(index, 1);
-      const rawText = messages
-        .slice(chunk.startIndex, chunk.endIndex + 1)
-        .filter((message) => message.role !== "system")
-        .map((message) => `${message.role}: ${cleanChatText(message.content)}`)
-        .join("\n\n");
-      mem.longTermVault.push({ ...chunk, text: rawText, summary: undefined, timestamp: Date.now() });
-    }
-  }
-
-  return saveProfile(scope, profile, userId);
-}
-
 async function scanNpcBlocks(scope: string, chatId: string, userId?: string): Promise<MeguminProfile> {
   const profile = await loadProfile(scope, userId);
   if (!profile.npcBank.enabled) return profile;
@@ -679,12 +621,6 @@ async function handlePostGeneration(chatId: string, userId?: string): Promise<vo
   const messages = await getMessages(chatId);
   await scanNpcBlocks(context.scope, chatId, userId);
 
-  if (profile.memoryCore.enabled && profile.memoryCore.triggerMode === "frequency") {
-    const aiCount = messages.filter((message) => message.role === "assistant").length;
-    if (aiCount > 0 && aiCount % Math.max(1, profile.memoryCore.autoFreq || 10) === 0) {
-      processMemory(context.scope, chatId, userId).catch((err: unknown) => spindle.log.warn(`Memory scan failed: ${String(err)}`));
-    }
-  }
 
   const assistant = lastAssistant(messages);
   if (!assistant || !profile.imageGen.enabled) return;
@@ -771,10 +707,6 @@ async function rpc(payload: RpcEnvelope, userId?: string): Promise<unknown> {
       const phrases = analysis.split(/[,\n-]+/).map((item) => item.trim().replace(/^["']|["']$/g, "")).filter((item) => item.length > 3);
       for (const phrase of phrases) if (!profile.banList.includes(phrase)) profile.banList.push(phrase);
       return { profile: await saveProfile(context.scope, profile, userId), added: phrases };
-    }
-    case "memory:process": {
-      if (!context.chatId) throw new Error("Open a chat before processing memory");
-      return { profile: await processMemory(context.scope, context.chatId, userId) };
     }
     case "npc:scan": {
       if (!context.chatId) throw new Error("Open a chat before scanning NPCs");

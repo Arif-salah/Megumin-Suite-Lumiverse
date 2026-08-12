@@ -8,7 +8,7 @@ import type {
   NpcRecord,
   PromptBuildResult
 } from "./types";
-import { chunkContainsIndex, cleanChatText, npcBuildText, relevantChunks } from "./text";
+import { cleanChatText, npcBuildText } from "./text";
 import { COMPACT_WORLD_STATE, buildBlocksEnvelope } from "./blocks";
 import { buildConfigBlock } from "./story-config";
 // The prompt database is the original Megumin prompt content, relocated into src.
@@ -191,10 +191,6 @@ export const REQUIRED_PLACEHOLDER_FEATURES = [
     { label: "NPC list hook", aliases: ["[[npc list]]"] },
     { label: "NPC dossier hook", aliases: ["[[npc_dossier]]"] },
     { label: "NPC dossier display hook", aliases: ["[[npc_dossier2]]"] }
-  ]),
-  featureSpec("memory-core", "Memory Core", [
-    { label: "long memory hook", aliases: ["[[long-Memory]]"] },
-    { label: "short memory hook", aliases: ["[[Short-memory]]"] }
   ]),
   featureSpec("story-config", "Story Config", [{ label: "config block hook", aliases: ["[[config]]"] }]),
   featureSpec("blocks-envelope", "Response Blocks Envelope", [{ label: "blocks envelope hook", aliases: ["[[blocks]]"] }]),
@@ -499,9 +495,11 @@ function buildBaseDict(
   dict.npcDossier = profile.npcBank.enabled ? npcDossierDirective() : "";
   dict.npcDossierSlot = profile.npcBank.enabled ? "[NPC Dossier block here]" : "";
 
-  const memory = buildMemoryInjection(profile, chatMessages);
-  dict.longMemory = memory.longMemory;
-  dict.shortMemory = memory.shortMemory;
+  // Memory Core is not part of this port. The hooks stay declared and empty so a
+  // preset carrying [[long-Memory]] / [[Short-memory]] has them stripped along
+  // with their lines rather than shipping raw tokens to the model.
+  dict.longMemory = "";
+  dict.shortMemory = "";
 
   if (profile.thinkingV2 && dict.prefill) {
     dict.prefill = dict.prefill.replace(/\n<think>[\s\S]*/, "\n<think>\n<think>");
@@ -709,20 +707,6 @@ export function replaceMeguminPlaceholders(
   return { messages, replacementsMade, changedMessages };
 }
 
-function buildMemoryInjection(profile: MeguminProfile, chatMessages: ChatMessage[]): { longMemory: string; shortMemory: string } {
-  const mem = profile.memoryCore;
-  if (!mem.enabled) return { longMemory: "", shortMemory: "" };
-  const recentText = chatMessages.slice(-4).map((msg) => cleanChatText(msg.content)).join(" ");
-  const relevant = relevantChunks(mem.longTermVault || [], recentText, 3);
-  const longMemory = relevant.length > 0
-    ? `[LONG-TERM MEMORY VAULT]\nThe following are relevant archived events. Do not treat them as currently happening.\n<retrieved_archives>\n${relevant.map((chunk) => `<archive_memory time="${new Date(chunk.timestamp).toLocaleString()}">\n[Msg ${chunk.id}]\n${chunk.text || chunk.summary || ""}\n</archive_memory>`).join("\n")}\n</retrieved_archives>`
-    : "";
-  const shortMemory = mem.shortTermChunks.length > 0
-    ? `[SHORT-TERM MEMORY]\n<recent_state_extracts>\n${mem.shortTermChunks.map((chunk) => `<archive_memory time="${new Date(chunk.timestamp).toLocaleString()}">[Msg ${chunk.id}]: ${chunk.summary || chunk.text || ""}</archive_memory>`).join("\n")}\n</recent_state_extracts>`
-    : "";
-  return { longMemory, shortMemory };
-}
-
 function buildNpcInjection(npcs: NpcRecord[], recentText: string): string {
   if (npcs.length === 0 || !recentText.trim()) return "";
   const words = new Set(recentText.match(/\p{L}[\p{L}\p{N}_-]*/gu)?.map((word) => word.toLowerCase()) || []);
@@ -760,39 +744,6 @@ template:
 </npc_dossier>`;
 }
 
-function archivedMessageIndexes(profile: MeguminProfile): Set<number> {
-  const mem = profile.memoryCore;
-  const indexes = new Set<number>();
-  if (!mem.enabled) return indexes;
-  for (const chunk of [...mem.shortTermChunks, ...mem.longTermVault]) {
-    for (let index = chunk.startIndex; index <= chunk.endIndex; index += 1) indexes.add(index);
-  }
-  return indexes;
-}
-
-function pruneArchivedPromptMessages(messages: LlmMessage[], chatMessages: ChatMessage[], profile: MeguminProfile): { messages: LlmMessage[]; prunedCount: number } {
-  const archived = archivedMessageIndexes(profile);
-  if (archived.size === 0) return { messages, prunedCount: 0 };
-  const archivedTexts = new Set<string>();
-  chatMessages.forEach((msg, index) => {
-    if (archived.has(index)) {
-      const normalized = cleanChatText(msg.content);
-      if (normalized.length > 20) archivedTexts.add(normalized);
-    }
-  });
-  if (archivedTexts.size === 0) return { messages, prunedCount: 0 };
-
-  let prunedCount = 0;
-  const kept = messages.filter((msg) => {
-    if (typeof msg.content !== "string" || msg.role === "system") return true;
-    const normalized = cleanChatText(msg.content);
-    if (!archivedTexts.has(normalized)) return true;
-    prunedCount += 1;
-    return false;
-  });
-  return { messages: kept, prunedCount };
-}
-
 export function buildPromptMessages(
   incoming: LlmMessage[],
   chatMessages: ChatMessage[],
@@ -801,11 +752,7 @@ export function buildPromptMessages(
   context: ChatContext
 ): PromptBuildResult {
   const profile = hydrateProfile(rawProfile || DEFAULT_PROFILE);
-  const { messages: prunedMessages, prunedCount } = pruneArchivedPromptMessages(
-    incoming.map((msg) => ({ ...msg, content: Array.isArray(msg.content) ? clone(msg.content) : msg.content })),
-    chatMessages,
-    profile
-  );
+  const prunedMessages = incoming.map((msg) => ({ ...msg, content: Array.isArray(msg.content) ? clone(msg.content) : msg.content }));
   const replaced = replaceMeguminPlaceholders(prunedMessages, profile, customEngines, chatMessages, context);
   const indexedMessages = replaced.messages.map((message, originalIndex) => ({ message, originalIndex })).filter((entry) => {
     if (typeof entry.message.content === "string") return entry.message.content.trim().length > 0;
@@ -825,15 +772,9 @@ export function buildPromptMessages(
   return {
     messages: resultMessages,
     breakdown: [],
-    prunedCount,
+    prunedCount: 0,
     replacementsMade: replaced.replacementsMade,
     changedMessages,
     estimatedInjectionTokens: estimateMeguminPayloadTokens(profile, customEngines, chatMessages, context)
   };
-}
-
-export function isMessageArchived(index: number, profile: MeguminProfile): boolean {
-  const mem = profile.memoryCore;
-  if (!mem.enabled) return false;
-  return [...mem.shortTermChunks, ...mem.longTermVault].some((chunk) => chunkContainsIndex(chunk, index));
 }

@@ -119,18 +119,6 @@ export const DEFAULT_PROFILE: MeguminProfile = {
     autoGenFreq: 1,
     previewPrompt: false
   },
-  memoryCore: {
-    enabled: false,
-    architecture: "raw_short_long",
-    workingLimit: 30,
-    shortTermLimit: 70,
-    backend: "direct",
-    scannerEngine: "tfidf",
-    triggerMode: "manual",
-    autoFreq: 10,
-    shortTermChunks: [],
-    longTermVault: []
-  },
   npcBank: {
     enabled: false,
     sendPortraitsToAi: false,
@@ -168,12 +156,6 @@ export function mergeProfile(raw: unknown): MeguminProfile {
   merged.userWordCount = String((input as any).userWordCount ?? base.userWordCount);
   merged.userLanguage = String((input as any).userLanguage ?? base.userLanguage);
   merged.customThinkEffort = String((input as any).customThinkEffort ?? base.customThinkEffort);
-  merged.memoryCore = {
-    ...base.memoryCore,
-    ...(input.memoryCore || {}),
-    shortTermChunks: input.memoryCore?.shortTermChunks || [],
-    longTermVault: input.memoryCore?.longTermVault || []
-  };
   merged.npcBank = {
     ...base.npcBank,
     ...(input.npcBank || {}),

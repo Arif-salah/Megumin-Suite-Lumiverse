@@ -110,18 +110,6 @@ var DEFAULT_PROFILE = {
     autoGenFreq: 1,
     previewPrompt: false
   },
-  memoryCore: {
-    enabled: false,
-    architecture: "raw_short_long",
-    workingLimit: 30,
-    shortTermLimit: 70,
-    backend: "direct",
-    scannerEngine: "tfidf",
-    triggerMode: "manual",
-    autoFreq: 10,
-    shortTermChunks: [],
-    longTermVault: []
-  },
   npcBank: {
     enabled: false,
     sendPortraitsToAi: false,
@@ -157,12 +145,6 @@ function mergeProfile(raw) {
   merged.userWordCount = String(input.userWordCount ?? base.userWordCount);
   merged.userLanguage = String(input.userLanguage ?? base.userLanguage);
   merged.customThinkEffort = String(input.customThinkEffort ?? base.customThinkEffort);
-  merged.memoryCore = {
-    ...base.memoryCore,
-    ...input.memoryCore || {},
-    shortTermChunks: input.memoryCore?.shortTermChunks || [],
-    longTermVault: input.memoryCore?.longTermVault || []
-  };
   merged.npcBank = {
     ...base.npcBank,
     ...input.npcBank || {},
@@ -177,9 +159,6 @@ function cleanAIOutput(text) {
 }
 function cleanChatText(text) {
   return String(text || "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<details>[\s\S]*?<\/details>/gi, "").replace(/<img\s+prompt=["'][\s\S]*?["']\s*\/?>/gi, "").replace(/<megumin-image[\s\S]*?<\/megumin-image>/gi, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-}
-function normalizeText(text) {
-  return cleanChatText(text).toLowerCase();
 }
 function escapeXmlAttr(value) {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -377,36 +356,6 @@ var STOP_WORDS = new Set([
   "slowly",
   "softly"
 ]);
-function extractKeywords(text) {
-  const words = (text.match(/\p{L}[\p{L}\p{N}_-]*/gu) || []).map((word) => word.toLowerCase());
-  return [...new Set(words)].filter((word) => {
-    if (STOP_WORDS.has(word))
-      return false;
-    if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(word))
-      return word.length >= 1;
-    return word.length >= 3;
-  });
-}
-function relevantChunks(vault, recentText, topK = 3) {
-  if (vault.length === 0)
-    return [];
-  const keywords = extractKeywords(recentText);
-  if (keywords.length === 0)
-    return [];
-  const totalDocs = vault.length;
-  return vault.map((chunk) => {
-    const text = normalizeText(chunk.text || chunk.summary || "");
-    let score = 0;
-    for (const keyword of keywords) {
-      if (!text.includes(keyword))
-        continue;
-      const docCount = Math.max(1, vault.filter((item) => normalizeText(item.text || item.summary || "").includes(keyword)).length);
-      if (docCount < totalDocs * 0.5 || totalDocs < 3)
-        score += Math.round(50 / docCount);
-    }
-    return { chunk, score };
-  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, topK).map((item) => item.chunk);
-}
 
 // src/blocks.ts
 var BLOCK_REGISTRY = [
@@ -4914,10 +4863,6 @@ var REQUIRED_PLACEHOLDER_FEATURES = [
     { label: "NPC dossier hook", aliases: ["[[npc_dossier]]"] },
     { label: "NPC dossier display hook", aliases: ["[[npc_dossier2]]"] }
   ]),
-  featureSpec("memory-core", "Memory Core", [
-    { label: "long memory hook", aliases: ["[[long-Memory]]"] },
-    { label: "short memory hook", aliases: ["[[Short-memory]]"] }
-  ]),
   featureSpec("story-config", "Story Config", [{ label: "config block hook", aliases: ["[[config]]"] }]),
   featureSpec("blocks-envelope", "Response Blocks Envelope", [{ label: "blocks envelope hook", aliases: ["[[blocks]]"] }]),
   featureSpec("dynamic-ban-list", "Dynamic Ban List", [{ label: "ban list hook", aliases: ["[[banlist]]"] }]),
@@ -5162,9 +5107,8 @@ Extra: ${profile.imageGen.promptExtra}` : ""}`;
   dict.npcList = npcBlock;
   dict.npcDossier = profile.npcBank.enabled ? npcDossierDirective() : "";
   dict.npcDossierSlot = profile.npcBank.enabled ? "[NPC Dossier block here]" : "";
-  const memory = buildMemoryInjection(profile, chatMessages);
-  dict.longMemory = memory.longMemory;
-  dict.shortMemory = memory.shortMemory;
+  dict.longMemory = "";
+  dict.shortMemory = "";
   if (profile.thinkingV2 && dict.prefill) {
     dict.prefill = dict.prefill.replace(/\n<think>[\s\S]*/, `
 <think>
@@ -5321,28 +5265,6 @@ function replaceMeguminPlaceholders(incoming, rawProfile, customEngines, chatMes
   });
   return { messages, replacementsMade, changedMessages };
 }
-function buildMemoryInjection(profile, chatMessages) {
-  const mem = profile.memoryCore;
-  if (!mem.enabled)
-    return { longMemory: "", shortMemory: "" };
-  const recentText = chatMessages.slice(-4).map((msg) => cleanChatText(msg.content)).join(" ");
-  const relevant = relevantChunks(mem.longTermVault || [], recentText, 3);
-  const longMemory = relevant.length > 0 ? `[LONG-TERM MEMORY VAULT]
-The following are relevant archived events. Do not treat them as currently happening.
-<retrieved_archives>
-${relevant.map((chunk) => `<archive_memory time="${new Date(chunk.timestamp).toLocaleString()}">
-[Msg ${chunk.id}]
-${chunk.text || chunk.summary || ""}
-</archive_memory>`).join(`
-`)}
-</retrieved_archives>` : "";
-  const shortMemory = mem.shortTermChunks.length > 0 ? `[SHORT-TERM MEMORY]
-<recent_state_extracts>
-${mem.shortTermChunks.map((chunk) => `<archive_memory time="${new Date(chunk.timestamp).toLocaleString()}">[Msg ${chunk.id}]: ${chunk.summary || chunk.text || ""}</archive_memory>`).join(`
-`)}
-</recent_state_extracts>` : "";
-  return { longMemory, shortMemory };
-}
 function buildNpcInjection(npcs, recentText) {
   if (npcs.length === 0 || !recentText.trim())
     return "";
@@ -5386,46 +5308,9 @@ template:
 </details>
 </npc_dossier>`;
 }
-function archivedMessageIndexes(profile) {
-  const mem = profile.memoryCore;
-  const indexes = new Set;
-  if (!mem.enabled)
-    return indexes;
-  for (const chunk of [...mem.shortTermChunks, ...mem.longTermVault]) {
-    for (let index = chunk.startIndex;index <= chunk.endIndex; index += 1)
-      indexes.add(index);
-  }
-  return indexes;
-}
-function pruneArchivedPromptMessages(messages, chatMessages, profile) {
-  const archived = archivedMessageIndexes(profile);
-  if (archived.size === 0)
-    return { messages, prunedCount: 0 };
-  const archivedTexts = new Set;
-  chatMessages.forEach((msg, index) => {
-    if (archived.has(index)) {
-      const normalized = cleanChatText(msg.content);
-      if (normalized.length > 20)
-        archivedTexts.add(normalized);
-    }
-  });
-  if (archivedTexts.size === 0)
-    return { messages, prunedCount: 0 };
-  let prunedCount = 0;
-  const kept = messages.filter((msg) => {
-    if (typeof msg.content !== "string" || msg.role === "system")
-      return true;
-    const normalized = cleanChatText(msg.content);
-    if (!archivedTexts.has(normalized))
-      return true;
-    prunedCount += 1;
-    return false;
-  });
-  return { messages: kept, prunedCount };
-}
 function buildPromptMessages(incoming, chatMessages, rawProfile, customEngines, context) {
   const profile = hydrateProfile(rawProfile || DEFAULT_PROFILE);
-  const { messages: prunedMessages, prunedCount } = pruneArchivedPromptMessages(incoming.map((msg) => ({ ...msg, content: Array.isArray(msg.content) ? clone(msg.content) : msg.content })), chatMessages, profile);
+  const prunedMessages = incoming.map((msg) => ({ ...msg, content: Array.isArray(msg.content) ? clone(msg.content) : msg.content }));
   const replaced = replaceMeguminPlaceholders(prunedMessages, profile, customEngines, chatMessages, context);
   const indexedMessages = replaced.messages.map((message, originalIndex) => ({ message, originalIndex })).filter((entry) => {
     if (typeof entry.message.content === "string")
@@ -5442,7 +5327,7 @@ function buildPromptMessages(incoming, chatMessages, rawProfile, customEngines, 
   return {
     messages: resultMessages,
     breakdown: [],
-    prunedCount,
+    prunedCount: 0,
     replacementsMade: replaced.replacementsMade,
     changedMessages,
     estimatedInjectionTokens: estimateMeguminPayloadTokens(profile, customEngines, chatMessages, context)
@@ -5514,8 +5399,7 @@ var SYNCABLE_PROFILE_KEYS = new Set([
   "banList",
   "banListBackend",
   "imageGen",
-  "npcBank",
-  "memoryCore"
+  "npcBank"
 ]);
 var utilityBypassDepth = 0;
 var activeUtilityRequest = null;
@@ -5529,7 +5413,6 @@ var MEGUMIN_PRESET_TARGETS = {
 var UTILITY_TRIGGERS = {
   storyPlan: "___PS_STORY_PLAN___",
   banList: "___PS_BANLIST___",
-  memorySummary: "___PS_MEMORY_SUMMARIZE___",
   imagePrompt: "___PS_IMAGE_GEN___",
   npcPortrait: "___PS_NPC_PFP___",
   dummyOrder: "___PS_DUMMY___"
@@ -5878,61 +5761,6 @@ function lastAssistant(messages) {
   }
   return null;
 }
-async function processMemory(scope, chatId, userId) {
-  const profile = await loadProfile(scope, userId);
-  const mem = profile.memoryCore;
-  const messages = await getMessages(chatId);
-  const real = messages.map((msg, index) => ({ msg, index })).filter((item) => item.msg.role !== "system" && cleanChatText(item.msg.content).length > 0);
-  if (!mem.enabled || real.length <= mem.workingLimit)
-    return profile;
-  const archivedIds = new Set([...mem.shortTermChunks, ...mem.longTermVault].map((chunk) => chunk.id));
-  const effectiveLimit = mem.architecture === "raw_long" ? mem.workingLimit : mem.workingLimit + mem.shortTermLimit;
-  const vaultCutoff = Math.max(0, real.length - effectiveLimit);
-  const archivable = real.slice(0, real.length - mem.workingLimit);
-  for (let offset = 0;offset < archivable.length; offset += 10) {
-    const chunk = archivable.slice(offset, offset + 10);
-    if (chunk.length === 0)
-      continue;
-    const startIndex = chunk[0].index;
-    const endIndex = chunk[chunk.length - 1].index;
-    const id = `${startIndex}-${endIndex}`;
-    if (archivedIds.has(id))
-      continue;
-    const text = chunk.map((item) => `${item.msg.role}: ${cleanChatText(item.msg.content)}`).join(`
-
-`);
-    if (offset < vaultCutoff || mem.architecture === "raw_long") {
-      mem.longTermVault.push({ id, startIndex, endIndex, text, timestamp: Date.now() });
-      archivedIds.add(id);
-      continue;
-    }
-    const summary = await generateQuiet([
-      {
-        role: "system",
-        content: "You are an expert narrative condenser. Summarize important story events and meaningful dialogue. Remove flowery prose and trivial motion. Do not quote dialogue unless necessary."
-      },
-      { role: "user", content: `Summarize this chat chunk clearly:
-
-<chat>
-${text}
-</chat>` }
-    ], { backend: mem.backend, presetKind: "engine", userId, trigger: "memorySummary" });
-    mem.shortTermChunks.push({ id, startIndex, endIndex, summary, timestamp: Date.now() });
-    archivedIds.add(id);
-  }
-  const shortCutoffIndex = real.length <= effectiveLimit ? 0 : real[real.length - effectiveLimit]?.index ?? 0;
-  for (let index = mem.shortTermChunks.length - 1;index >= 0; index -= 1) {
-    const chunk = mem.shortTermChunks[index];
-    if (chunk.endIndex < shortCutoffIndex) {
-      mem.shortTermChunks.splice(index, 1);
-      const rawText = messages.slice(chunk.startIndex, chunk.endIndex + 1).filter((message) => message.role !== "system").map((message) => `${message.role}: ${cleanChatText(message.content)}`).join(`
-
-`);
-      mem.longTermVault.push({ ...chunk, text: rawText, summary: undefined, timestamp: Date.now() });
-    }
-  }
-  return saveProfile(scope, profile, userId);
-}
 async function scanNpcBlocks(scope, chatId, userId) {
   const profile = await loadProfile(scope, userId);
   if (!profile.npcBank.enabled)
@@ -6060,12 +5888,6 @@ async function handlePostGeneration(chatId, userId) {
   const profile = await loadProfile(context.scope, userId);
   const messages = await getMessages(chatId);
   await scanNpcBlocks(context.scope, chatId, userId);
-  if (profile.memoryCore.enabled && profile.memoryCore.triggerMode === "frequency") {
-    const aiCount = messages.filter((message) => message.role === "assistant").length;
-    if (aiCount > 0 && aiCount % Math.max(1, profile.memoryCore.autoFreq || 10) === 0) {
-      processMemory(context.scope, chatId, userId).catch((err) => spindle.log.warn(`Memory scan failed: ${String(err)}`));
-    }
-  }
   const assistant = lastAssistant(messages);
   if (!assistant || !profile.imageGen.enabled)
     return;
@@ -6161,11 +5983,6 @@ ${cleanedTranscript(messages, 60)}` }
         if (!profile.banList.includes(phrase))
           profile.banList.push(phrase);
       return { profile: await saveProfile(context.scope, profile, userId), added: phrases };
-    }
-    case "memory:process": {
-      if (!context.chatId)
-        throw new Error("Open a chat before processing memory");
-      return { profile: await processMemory(context.scope, context.chatId, userId) };
     }
     case "npc:scan": {
       if (!context.chatId)

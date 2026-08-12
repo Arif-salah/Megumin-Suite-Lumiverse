@@ -1,4 +1,4 @@
-import type { MemoryChunk, NpcRecord } from "./types";
+import type { NpcRecord } from "./types";
 
 export function cleanAIOutput(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
@@ -133,28 +133,3 @@ export function extractKeywords(text: string): string[] {
   });
 }
 
-export function relevantChunks(vault: MemoryChunk[], recentText: string, topK = 3): MemoryChunk[] {
-  if (vault.length === 0) return [];
-  const keywords = extractKeywords(recentText);
-  if (keywords.length === 0) return [];
-  const totalDocs = vault.length;
-  return vault
-    .map((chunk) => {
-      const text = normalizeText(chunk.text || chunk.summary || "");
-      let score = 0;
-      for (const keyword of keywords) {
-        if (!text.includes(keyword)) continue;
-        const docCount = Math.max(1, vault.filter((item) => normalizeText(item.text || item.summary || "").includes(keyword)).length);
-        if (docCount < totalDocs * 0.5 || totalDocs < 3) score += Math.round(50 / docCount);
-      }
-      return { chunk, score };
-    })
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map((item) => item.chunk);
-}
-
-export function chunkContainsIndex(chunk: MemoryChunk, index: number): boolean {
-  return index >= chunk.startIndex && index <= chunk.endIndex;
-}

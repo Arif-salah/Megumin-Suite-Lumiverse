@@ -203,8 +203,7 @@ const tabs = [
   { title: "Story Planner", sub: "Generate and track future plot developments.", short: "Story", icon: "fa-map", color: "#f59e0b", render: renderStory },
   { title: "Dynamic Ban List", sub: "Scan and ban repetitive AI phrases.", short: "Ban", icon: "fa-ban", color: "#ef4444", render: renderBanList },
   { title: "Image Generation", sub: "Wire up ComfyUI to auto-generate scene images during roleplay.", short: "Image", icon: "fa-image", color: "#06b6d4", render: renderImage },
-  { title: "NPCs Bank", sub: "Automatically extract and track significant NPCs in the story.", short: "NPCs", icon: "fa-address-book", color: "#f43f5e", render: renderNpc },
-  { title: "Memory Core", sub: "Advanced 3-Tier Context & History Management.", short: "Memory", icon: "fa-memory", color: "#10b981", render: renderMemory }
+  { title: "NPCs Bank", sub: "Automatically extract and track significant NPCs in the story.", short: "NPCs", icon: "fa-address-book", color: "#f43f5e", render: renderNpc }
 ];
 
 const devTab = { title: "Dev Engine Builder", sub: "Clone, edit, and save custom Megumin engine blocks.", short: "Dev", icon: "fa-code", color: "#a855f7", render: renderDev };
@@ -564,12 +563,6 @@ function wire(container: HTMLElement) {
       if (!npc || !input.dataset.field) return;
       npc[input.dataset.field] = input.value;
       saveProfileSoon();
-    });
-  });
-  container.querySelector<HTMLInputElement>("#mem_vault_search")?.addEventListener("input", (event) => {
-    const query = (event.currentTarget as HTMLInputElement).value.trim().toLowerCase();
-    container.querySelectorAll<HTMLElement>("#mem_vault_list .mem-accordion").forEach((item) => {
-      item.style.display = !query || item.textContent?.toLowerCase().includes(query) ? "" : "none";
     });
   });
   container.querySelector<HTMLInputElement>("#dev_import_file")?.addEventListener("change", (event) => {
@@ -1075,7 +1068,6 @@ async function handleAction(el: HTMLElement) {
     }
     if (action === "story-generate") return runTask("Generating story plan...", "story:generate");
     if (action === "ban-analyze") return runTask("Analyzing style...", "banlist:analyze");
-    if (action === "memory-process") return runTask("Processing memory...", "memory:process");
     if (action === "npc-scan") return runTask("Scanning NPCs...", "npc:scan");
     if (action === "image-manual") {
       let prompt = (root().querySelector("#meg-manual-image-prompt") as HTMLTextAreaElement)?.value || "";
@@ -1161,24 +1153,6 @@ async function handleAction(el: HTMLElement) {
     if (action === "npc-remove") {
       state.profile.npcBank.npcs = state.profile.npcBank.npcs.filter((item) => item.name !== el.dataset.name);
       saveProfileSoon();
-      render();
-      return;
-    }
-    if (action === "memory-clear-short") {
-      state.profile.memoryCore.shortTermChunks = [];
-      saveProfileSoon();
-      render();
-      return;
-    }
-    if (action === "memory-clear-vault") {
-      if (!state.profile.memoryCore.longTermVault.length || !confirm("Clear the Long-Term Vault?")) return;
-      state.profile.memoryCore.longTermVault = [];
-      saveProfileSoon();
-      render();
-      return;
-    }
-    if (action === "memory-test-vector") {
-      state.status = "Scanner checked";
       render();
       return;
     }
@@ -1855,61 +1829,6 @@ function renderNpcCard(npc: any): string {
     </details>`;
 }
 
-function renderMemory(): string {
-  const mem = state.profile.memoryCore;
-  const totalUnits = Math.max(1, mem.workingLimit + mem.shortTermLimit + mem.longTermVault.length + mem.shortTermChunks.length);
-  const workingPct = clamp((mem.workingLimit / totalUnits) * 100, 8, 70);
-  const shortPct = clamp((mem.shortTermLimit / totalUnits) * 100, 8, 70);
-  const vaultPct = clamp((mem.longTermVault.length / totalUnits) * 100, 5, 70);
-  return `
-    ${tabHeader("Memory Core", "3-Tier Context Management: Working, Short-Term, and Long-Term Vector DB.", "fa-memory", "#10b981", mem.enabled ? "Enabled" : "Disabled", mem.enabled ? "#10b981" : "#a1a1aa", mem.enabled ? "fa-circle-check" : "fa-circle-xmark")}
-    ${presetFeatureWarning(["memory-core"])}
-    <div id="mem_enable_card" class="mtab-toggle-row ${mem.enabled ? "active" : ""}" data-action="toggle" data-path="memoryCore.enabled" style="margin-bottom: 20px;"><div class="toggle-info"><div class="toggle-label">${icon("fa-microchip")} Enable Memory Core</div><div class="toggle-desc">Archiving happens silently in the background. Old messages fade in the UI and are replaced in the prompt with injected summaries.</div></div><div class="ps-switch"></div></div>
-    <div id="mem_main_content" style="display:${mem.enabled ? "block" : "none"};">
-    <div class="mtab-panel" style="margin-bottom:16px;">
-      <div class="panel-heading-row" style="margin-bottom:10px;">
-        <div class="mtab-panel-title green" style="margin:0;">${icon("fa-chart-gantt")} Context Allocation Dashboard</div>
-        <div class="mem-token-badge">${icon("fa-floppy-disk")} <span id="mem_live_tokens_saved">~${estimateTokensSaved()}</span> Tokens Saved</div>
-      </div>
-      <div class="mem-legend">
-        <span>${icon("fa-circle")} Working</span>
-        <span id="mem_dash_short_lbl" style="display:${mem.architecture === "raw_long" ? "none" : "inline"};">${icon("fa-circle-half-stroke")} Pend Short ${icon("fa-circle")} Short</span>
-        <span>${icon("fa-circle-half-stroke")} Pend Vault ${icon("fa-circle")} Vault</span>
-      </div>
-      <div class="mem-progress-container">
-        <span id="mem_bar_work" class="mem-prog-working" style="width:${workingPct}%"></span>
-        <span id="mem_bar_short_pend" class="mem-prog-short-pending" style="width:0%"></span>
-        <span id="mem_bar_short" class="mem-prog-short" style="width:${mem.architecture === "raw_long" ? 0 : shortPct}%"></span>
-        <span id="mem_bar_long_pend" class="mem-prog-long-pending" style="width:0%"></span>
-        <span id="mem_bar_long" class="mem-prog-long" style="width:${vaultPct}%"></span>
-      </div>
-      <div id="mem_status_text" class="mem-status-text">Monitoring Chat History...</div>
-    </div>
-    <div class="mtab-panel" style="margin-bottom:16px;">
-      <div class="mtab-panel-title gold">${icon("fa-gears")} Extraction Engine Settings</div>
-      <div class="mem-help"><div>${icon("fa-circle-info")} How to Use</div><span>1- Choose your Memory Architecture and how much of each type you want (default is 30 raw, 70 summary).<br>2- Hit <b>Apply & Extract Pending</b> to save and start it.<br>3- You can choose between manual and auto. For manual, you have to hit <b>Apply & Extract Pending</b> to trigger it.</span></div>
-      <div class="mtab-setting-row" style="padding-top:0;">${settingText("Memory Architecture", "Choose how the tiers are structured.")}<select id="mem_architecture" class="ps-modern-input gold-input" data-bind="memoryCore.architecture" style="width:280px;"><option value="raw_short_long" ${mem.architecture === "raw_short_long" ? "selected" : ""}>Raw Text + Short-Term Summaries + Vault</option><option value="raw_long" ${mem.architecture === "raw_long" ? "selected" : ""}>Raw Text + Vault Directly (Skip Summaries)</option></select></div>
-      <div class="mem-slider-box">
-        <div class="mtab-param-row mem-slider-row"><span class="param-label">Working Limit</span><input type="range" id="mem_work_slider" min="30" max="300" step="10" data-bind="memoryCore.workingLimit" value="${mem.workingLimit}"><span id="mem_work_val" class="param-value">${mem.workingLimit}</span></div>
-        <div class="mtab-param-row mem-slider-row" id="mem_short_slider_row" style="display:${mem.architecture === "raw_long" ? "none" : "flex"};"><span class="param-label">Short-Term Limit</span><input type="range" id="mem_short_slider" min="10" max="1000" step="10" data-bind="memoryCore.shortTermLimit" value="${mem.shortTermLimit}"><span id="mem_short_val" class="param-value">${mem.shortTermLimit}</span></div>
-        <div class="mem-apply-row"><button id="mem_btn_apply_limits" class="ps-modern-btn secondary green-text" type="button" data-action="memory-process">${icon("fa-arrows-rotate")} Apply & Extract Pending</button></div>
-      </div>
-      <div class="mtab-setting-row">${settingText("Generator Backend", "")}<select id="mem_backend" class="ps-modern-input" data-bind="memoryCore.backend" style="width:220px;">${presetBackendOptions("engine").map(([id, label]) => `<option value="${id}" ${mem.backend === id ? "selected" : ""}>${label}</option>`).join("")}</select></div>
-      <div class="mtab-setting-row">${settingText("Vault Scanner Engine", "TF-IDF (Fast/Local) or Semantic Embeddings (Requires ST Vector Storage enabled).")}<select id="mem_scanner_engine" class="ps-modern-input" data-bind="memoryCore.scannerEngine" style="width:280px;"><option value="tfidf" ${mem.scannerEngine === "tfidf" ? "selected" : ""}>TF-IDF Keyword Matcher</option><option value="semantic" ${mem.scannerEngine === "semantic" ? "selected" : ""}>Semantic Embeddings (ST Native API)</option></select></div>
-      <div class="mtab-setting-row">${settingText("Auto-Trigger Mode", "")}<select id="mem_trigger" class="ps-modern-input" data-bind="memoryCore.triggerMode" style="width:150px;"><option value="manual" ${mem.triggerMode === "manual" ? "selected" : ""}>Manual Only</option><option value="frequency" ${mem.triggerMode === "frequency" ? "selected" : ""}>Every 10 Replies</option></select></div>
-    </div>
-    <div class="mtab-panel" style="margin-bottom:16px;">
-      <div class="panel-heading-row"><div class="mtab-panel-title gold">${icon("fa-box-archive")} Short-Term Memory <span id="mem_processing_spinner" class="mem-spinner" style="display:none;">${icon("fa-circle-notch")}</span></div><button id="mem_btn_clear_short" class="ps-modern-btn secondary danger mini" type="button" data-action="memory-clear-short">${icon("fa-trash-can")} Clear All</button></div>
-      <div id="mem_short_term_list">${(mem.shortTermChunks || []).slice(-20).reverse().map((chunk) => memoryAccordion(chunk)).join("") || `<span class="empty-text">No short-term summaries yet.</span>`}</div>
-    </div>
-    <div class="mtab-panel">
-      <div class="panel-heading-row"><div class="mtab-panel-title blue">${icon("fa-database")} Long-Term Vault (Vector Storage)</div><span id="mem_vault_count" class="empty-text">${(mem.longTermVault || []).length} Entries</span></div>
-      <div class="inline-form" style="grid-template-columns:minmax(0,1fr) auto auto; margin-bottom:10px;"><input id="mem_vault_search" class="ps-modern-input" placeholder="Search archived memories..."><button id="mem_btn_test_vector" class="ps-modern-btn secondary blue-text" type="button" data-action="memory-test-vector">${icon("fa-radar")} Test Scanner</button><button id="mem_btn_clear_vault" class="ps-modern-btn secondary danger" type="button" data-action="memory-clear-vault">${icon("fa-trash-can")} Clear All</button></div>
-      <div id="mem_vault_list">${(mem.longTermVault || []).slice(-20).reverse().map((chunk) => memoryAccordion(chunk)).join("") || `<span class="empty-text">No vault entries yet.</span>`}</div>
-    </div>
-    </div>`;
-}
-
 function renderDev(): string {
   const coreEngines = state.engines.filter((engine) => !state.customEngines.some((custom) => custom.id === engine.id));
   if (!state.devEditorId) {
@@ -2103,8 +2022,7 @@ function tabHeader(title: string, sub: string, iconName: string, color: string, 
     "Story Planner": "sp_header_badge",
     "Dynamic Ban List": "ban_header_badge",
     "Image Generation": "ig_header_badge",
-    "NPCs Bank": "npc_header_badge",
-    "Memory Core": "mem_header_badge"
+    "NPCs Bank": "npc_header_badge"
   };
   const badgeId = badgeIds[title] ? `id="${badgeIds[title]}"` : "";
   const badgeRgb = hexToRgb(badgeColor) || "16,185,129";
@@ -2371,10 +2289,14 @@ function groupModels(models: any[]): Record<string, any[]> {
 function currentCotType(): string {
   const model = state.profile.model || "cot-off";
   if (model === "cot-off") return "off";
-  for (const type of ["v7-lite", "v7", "v6-lite", "v6", "v2", "v1"]) {
+  // Longest family id first: cot-v9-lite-english must resolve to v9-lite, not v9.
+  for (const type of cotTypeIds()) {
     if (model.startsWith(`cot-${type}-`)) return type;
   }
-  return "v1";
+  // Falling back to a hardcoded family used to mean a V9 profile silently
+  // displayed as V1, and touching the picker overwrote it. Report what the
+  // profile actually holds instead.
+  return splitCotId(model)?.type || "off";
 }
 
 function currentCotLang(): string {
@@ -2388,31 +2310,104 @@ function normalizeEffort(value: string): "unspecified" | "100" | "250" | "450" |
   return "100";
 }
 
-function cotFrameworks(currentType: string, currentLang: string): Array<{ id: string; value: string; label: string; desc: string; isNew?: boolean }> {
-  const lang = currentLang || "english";
-  return [
-    { id: "off", value: "cot-off", label: "CoT Off", desc: "No Chain of Thought or prefill. The AI will respond normally." },
-    { id: "v1", value: `cot-v1-${lang}`, label: "CoT V1 (Classic)", desc: "The original 8-step framework. Focuses heavily on the NPC's internal emotional landscape vs their observable actions." },
-    { id: "v2", value: `cot-v2-${lang}`, label: "CoT V2 (New)", desc: "The new experimental framework. Stricter reality checks, info audits, better NPCs, and hook generation." },
-    { id: "v6", value: `cot-v6-${lang}`, label: "CoT V6 (Dream Team)", desc: "The full 4-phase sequence designed specifically for V6 engines. Specialized validation and modeling.", isNew: true },
-    { id: "v6-lite", value: `cot-v6-lite-${lang}`, label: "CoT V6 (Lite)", desc: "A streamlined 3-phase sequence. Less token overhead while maintaining narrative rules.", isNew: true },
-    { id: "v7", value: "cot-v7-english", label: "CoT V7", desc: "The new V7 sequence with 5-phase strict ground truth rebuilding.", isNew: true },
-    { id: "v7-lite", value: "cot-v7-lite-english", label: "CoT V7 (Lite)", desc: "A streamlined 5-phase sequence for V7.", isNew: true }
-  ].map((item) => ({ ...item, value: item.id === "off" ? item.value : item.value.replace("cot-off-", "cot-") }));
+/**
+ * Presentation for each CoT family. This map is labels only — which families
+ * actually exist, and in which languages, is read from the prompt corpus. Adding a
+ * framework to megumin-data.js therefore surfaces it in the picker on its own,
+ * which is how V8 and V9 came to be missing here in the first place.
+ */
+const COT_META: Record<string, { label: string; desc: string; isNew?: boolean }> = {
+  v9: { label: "CoT V9 (Mirage)", desc: "The current flagship sequence. Full authorial reasoning with scene-temperature and proportionality passes.", isNew: true },
+  "v9-lite": { label: "CoT V9 (Lite)", desc: "A trimmed V9 sequence. Same discipline, noticeably less thinking overhead.", isNew: true },
+  "v9-director": { label: "CoT V9 (Director)", desc: "V9 reasoning tuned for the Director engine — scene staging and pacing take priority.", isNew: true },
+  "v9-immersion": { label: "CoT V9 (Immersion)", desc: "The deepest V9 sequence. Heaviest world-state and continuity checking before writing.", isNew: true },
+  "v9-hybrid": { label: "CoT V9 (Hybrid)", desc: "A blend of the V9 passes with the older V7 ground-truth rebuild.", isNew: true },
+  "v8-fusion": { label: "CoT V8 (Fusion)", desc: "The V8 fusion sequence, balancing narrative planning against reality checks." },
+  v8: { label: "CoT V8", desc: "The standard V8 reasoning sequence." },
+  "v7.5": { label: "CoT V7.5", desc: "Paired with the V7.5 narrator engine and its opinionated narration voice." },
+  v7: { label: "CoT V7", desc: "The V7 sequence with 5-phase strict ground truth rebuilding." },
+  "v7-lite": { label: "CoT V7 (Lite)", desc: "A streamlined 5-phase sequence for V7." },
+  v6: { label: "CoT V6 (Dream Team)", desc: "The full 4-phase sequence designed specifically for V6 engines. Specialized validation and modeling." },
+  "v6-lite": { label: "CoT V6 (Lite)", desc: "A streamlined 3-phase sequence. Less token overhead while maintaining narrative rules." },
+  v2: { label: "CoT V2", desc: "Stricter reality checks, info audits, better NPCs, and hook generation." },
+  v1: { label: "CoT V1 (Classic)", desc: "The original 8-step framework. Focuses on the NPC's internal emotional landscape vs their observable actions." }
+};
+
+/** Newest first, so the current engine's framework is the first thing on screen. */
+const COT_ORDER = [
+  "v9", "v9-lite", "v9-director", "v9-immersion", "v9-hybrid",
+  "v8-fusion", "v8", "v7.5", "v7", "v7-lite", "v6", "v6-lite", "v2", "v1"
+];
+
+/** Splits a model id into its family and language. `cot-v9-lite-english` → v9-lite / english. */
+function splitCotId(id: string): { type: string; lang: string } | null {
+  const match = /^cot-(.+)-([a-z]{2,8})$/.exec(id);
+  return match ? { type: match[1], lang: match[2] } : null;
 }
 
-function cotLanguages(currentType: string): Array<{ id: string; label: string; rec?: boolean }> {
-  if (currentType === "v7" || currentType === "v7-lite") return [{ id: "english", label: "English" }];
+/** Every CoT family present in the corpus, longest first so v9-lite beats v9. */
+function cotTypeIds(): string[] {
+  const models = (state.logic?.models || []) as Array<{ id: string }>;
+  const ids = new Set<string>();
+  for (const model of models) {
+    if (model.id === "cot-off") continue;
+    const parts = splitCotId(model.id);
+    if (parts) ids.add(parts.type);
+  }
+  return [...ids].sort((a, b) => b.length - a.length);
+}
+
+function cotFrameworks(currentType: string, currentLang: string): Array<{ id: string; value: string; label: string; desc: string; isNew?: boolean }> {
+  void currentType;
+  const present = new Set(cotTypeIds());
+  const known = COT_ORDER.filter((type) => present.has(type));
+  // Anything in the corpus that predates this map still gets an entry rather than
+  // silently vanishing from the picker.
+  const extra = [...present].filter((type) => !COT_ORDER.includes(type)).sort();
+
+  const entries = [...known, ...extra].map((type) => {
+    const languages = cotLanguages(type).map((item) => item.id);
+    // Keep the reader's language when this family offers it; fall back to English.
+    const lang = languages.includes(currentLang) ? currentLang : languages[0] || "english";
+    const meta = COT_META[type] || { label: `CoT ${type.toUpperCase()}`, desc: "" };
+    return { id: type, value: `cot-${type}-${lang}`, label: meta.label, desc: meta.desc, isNew: meta.isNew };
+  });
+
   return [
-    { id: "english", label: "English" },
-    { id: "arabic", label: "Arabic (العربية)", rec: true },
-    { id: "spanish", label: "Spanish (Español)" },
-    { id: "french", label: "French (Français)" },
-    { id: "zh", label: "Mandarin (中文)" },
-    { id: "ru", label: "Russian (Русский)" },
-    { id: "jp", label: "Japanese (日本語)" },
-    { id: "pt", label: "Portuguese (Português)" }
+    ...entries,
+    { id: "off", value: "cot-off", label: "CoT Off", desc: "No Chain of Thought or prefill. The AI will respond normally." }
   ];
+}
+
+const COT_LANGUAGE_LABELS: Array<{ id: string; label: string; rec?: boolean }> = [
+  { id: "english", label: "English" },
+  { id: "arabic", label: "Arabic (العربية)", rec: true },
+  { id: "spanish", label: "Spanish (Español)" },
+  { id: "french", label: "French (Français)" },
+  { id: "zh", label: "Mandarin (中文)" },
+  { id: "ru", label: "Russian (Русский)" },
+  { id: "jp", label: "Japanese (日本語)" },
+  { id: "pt", label: "Portuguese (Português)" }
+];
+
+/**
+ * Only the languages this family was actually written in. Read from the corpus
+ * rather than listed by hand: offering French for a family that only ships English
+ * would hand the engine a model id that resolves to nothing, which silently
+ * disables thinking altogether.
+ */
+function cotLanguages(currentType: string): Array<{ id: string; label: string; rec?: boolean }> {
+  const models = (state.logic?.models || []) as Array<{ id: string }>;
+  const available = new Set<string>();
+  for (const model of models) {
+    // Split on the family rather than string-prefixing: `cot-v9-lite-english`
+    // starts with `cot-v9-` and would otherwise register "lite-english" as one of
+    // V9's languages.
+    const parts = splitCotId(model.id);
+    if (parts?.type === currentType) available.add(parts.lang);
+  }
+  const known = COT_LANGUAGE_LABELS.filter((item) => available.has(item.id));
+  return known.length ? known : [{ id: "english", label: "English" }];
 }
 
 function activeTabProfileKeys(): string[] {
@@ -2430,8 +2425,7 @@ function activeTabProfileKeys(): string[] {
     Story: ["storyPlan"],
     Ban: ["banList", "banListBackend"],
     Image: ["imageGen"],
-    NPCs: ["npcBank"],
-    Memory: ["memoryCore"]
+    NPCs: ["npcBank"]
   };
   return map[tabs[state.activeTab]?.short || ""] || [];
 }
@@ -2468,12 +2462,6 @@ function readableModel(id: string): string {
   return id.replace(/^cot-/, "").replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function estimateTokensSaved(): number {
-  const chars = [...state.profile.memoryCore.shortTermChunks, ...state.profile.memoryCore.longTermVault]
-    .reduce((total, chunk) => total + (chunk.text || chunk.summary || "").length, 0);
-  return Math.ceil(chars / 4);
-}
-
 function estimatePayloadTokens(): number {
   const activeEngine = state.engines.find((engine) => engine.id === state.profile.mode) as any;
   const selectedAddons = (state.logic?.addons || []).filter((item: any) => state.profile.addons.includes(item.id));
@@ -2486,8 +2474,7 @@ function estimatePayloadTokens(): number {
     addons: selectedAddons.map((item: any) => item.content).join("\n"),
     blocks: selectedBlocks.map((item: any) => item.content).join("\n"),
     model: selectedModel?.content || "",
-    story: state.profile.storyPlan.currentPlan,
-    memory: [...state.profile.memoryCore.shortTermChunks, ...state.profile.memoryCore.longTermVault].slice(-8)
+    story: state.profile.storyPlan.currentPlan
   });
   return Math.max(0, Math.ceil(profileText.length / 4));
 }
@@ -4777,7 +4764,6 @@ const ST_PARITY_CSS = String.raw`.meg-overlay {
 }
 
 /* Memory Tab: Dashboard Progress Bar */
-.mem-progress-container {
     width: 100%;
     height: 12px;
     background: rgba(0, 0, 0, 0.4);
@@ -4788,12 +4774,9 @@ const ST_PARITY_CSS = String.raw`.meg-overlay {
     border: 1px solid var(--border-color);
 }
 
-.mem-prog-working { background: #10b981; transition: width 0.4s ease; }
 .mem-prog-short { background: #f59e0b; transition: width 0.4s ease; }
-.mem-prog-long { background: #3b82f6; transition: width 0.4s ease; }
 
 /* Memory Tab: Short-Term Accordion */
-.mem-accordion {
     background: var(--bg-main);
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -4801,7 +4784,6 @@ const ST_PARITY_CSS = String.raw`.meg-overlay {
     overflow: hidden;
 }
 
-.mem-accordion-header {
     padding: 12px 16px;
     background: rgba(255, 255, 255, 0.02);
     cursor: pointer;
@@ -4812,15 +4794,12 @@ const ST_PARITY_CSS = String.raw`.meg-overlay {
     align-items: center;
 }
 
-.mem-accordion-header:hover { background: rgba(255, 255, 255, 0.05); }
 
-.mem-accordion-body {
     padding: 16px;
     display: none;
     border-top: 1px solid var(--border-color);
 }
 
-.mem-accordion-body textarea {
     width: 100%;
     min-height: 100px;
     background: rgba(0,0,0,0.2);
@@ -4834,7 +4813,6 @@ const ST_PARITY_CSS = String.raw`.meg-overlay {
 }
 
 /* Loading Spinner */
-.mem-spinner {
     animation: spin 1s linear infinite;
     color: var(--gold);
 }
@@ -4923,24 +4901,15 @@ const LUMIVERSE_COMPAT_CSS = String.raw`
 .npc-field-section strong { font-size:.65rem; font-weight:700; margin-bottom:2px; display:flex; align-items:center; gap:4px; }
 .npc-field-edit { height:32px; min-height:32px !important; resize:vertical; font-size:.7rem; padding:4px 6px; background:rgba(0,0,0,.25); border-color:rgba(255,255,255,.06); border-radius:6px; line-height:1.3; }
 .memory-dashboard { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
-.mem-stat { border:1px solid var(--border-color); border-radius:8px; padding:16px; background:var(--bg-main); }
 .mem-stat strong { display:block; color:var(--stat-color); font-size:28px; line-height:1; }
-.mem-stat span { display:block; color:#fff; font-weight:800; margin-top:8px; }
 .mem-stat small { color:var(--text-muted); }
-.mem-legend { display:flex; justify-content:space-between; color:var(--text-muted); font-size:.68rem; margin-bottom:5px; text-transform:uppercase; letter-spacing:.5px; }
 .mem-legend span { display:flex; gap:5px; align-items:center; }
-.mem-token-badge { font-size:.75rem; font-weight:800; color:#10b981; background:rgba(16,185,129,.1); padding:4px 12px; border-radius:12px; border:1px solid rgba(16,185,129,.3); box-shadow:0 0 10px rgba(16,185,129,.2); }
 .mem-status-text { margin-top:10px; font-size:.7rem; color:var(--text-muted); text-align:center; }
-.mem-help { background:rgba(245,158,11,.1); border-left:3px solid var(--gold); padding:12px; border-radius:6px; margin-bottom:16px; font-size:.8rem; color:var(--text-main); }
 .mem-help div { color:var(--gold); font-weight:800; margin-bottom:6px; }
-.mem-help span { color:var(--text-muted); line-height:1.4; }
 .gold-input { color:var(--gold); border-color:rgba(245,158,11,.3); }
-.mem-slider-box { background:rgba(0,0,0,.2); padding:15px; border-radius:10px; border:1px solid var(--border-color); margin-bottom:15px; }
 .mem-slider-row { flex-direction:row; align-items:center; gap:12px; }
-.mem-slider-row .param-label { width:120px; flex:0 0 120px; }
 .mem-slider-row input { flex:1; }
 .param-value { font-size:.8rem; font-weight:800; min-width:30px; text-align:right; }
-.mem-apply-row { margin-top:15px; display:flex; justify-content:flex-end; border-top:1px dashed var(--border-color); padding-top:15px; }
 .green-text { color:#10b981 !important; border-color:rgba(16,185,129,.3) !important; }
 .blue-text { color:#3b82f6 !important; border-color:rgba(59,130,246,.3) !important; }
 .dev-layout { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr); gap:14px; }

@@ -100,29 +100,7 @@ export interface NpcRecord {
   timestamp: number;
 }
 
-export interface MemoryChunk {
-  id: string;
-  startIndex: number;
-  endIndex: number;
-  text?: string;
-  summary?: string;
-  timestamp: number;
-}
-
 export type UtilityBackend = "direct" | "preset";
-
-export interface MemoryCoreSettings {
-  enabled: boolean;
-  architecture: "raw_short_long" | "raw_long";
-  workingLimit: number;
-  shortTermLimit: number;
-  backend: UtilityBackend;
-  scannerEngine: "tfidf" | "semantic";
-  triggerMode: "manual" | "frequency";
-  autoFreq: number;
-  shortTermChunks: MemoryChunk[];
-  longTermVault: MemoryChunk[];
-}
 
 export interface ImageGenSettings {
   enabled: boolean;
@@ -214,13 +192,13 @@ export interface MeguminProfile {
   worldState: { compactEnabled: boolean; fullFreq: number };
   storyPlan: StoryPlanSettings;
   imageGen: ImageGenSettings;
-  memoryCore: MemoryCoreSettings;
   npcBank: NpcBankSettings;
 }
 
 export interface PromptBuildResult {
   messages: LlmMessage[];
   breakdown: Array<{ messageIndex: number; name: string }>;
+  /** Always 0. Prompt-level pruning belonged to Memory Core, which this port drops. */
   prunedCount: number;
   replacementsMade: number;
   changedMessages: Array<{ messageIndex: number; replacementsMade: number }>;
