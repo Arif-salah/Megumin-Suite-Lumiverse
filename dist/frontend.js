@@ -210,6 +210,11 @@ var faUpRightAndDownLeftFromCenter = {
   iconName: "up-right-and-down-left-from-center",
   icon: [512, 512, ["expand-alt"], "f424", "M344 0L488 0c13.3 0 24 10.7 24 24l0 144c0 9.7-5.8 18.5-14.8 22.2s-19.3 1.7-26.2-5.2l-39-39-87 87c-9.4 9.4-24.6 9.4-33.9 0l-32-32c-9.4-9.4-9.4-24.6 0-33.9l87-87-39-39c-6.9-6.9-8.9-17.2-5.2-26.2S334.3 0 344 0zM168 512L24 512c-13.3 0-24-10.7-24-24L0 344c0-9.7 5.8-18.5 14.8-22.2S34.1 320.2 41 327l39 39 87-87c9.4-9.4 24.6-9.4 33.9 0l32 32c9.4 9.4 9.4 24.6 0 33.9l-87 87 39 39c6.9 6.9 8.9 17.2 5.2 26.2S177.7 512 168 512z"]
 };
+var faArrowUp = {
+  prefix: "fas",
+  iconName: "arrow-up",
+  icon: [384, 512, [8593], "f062", "M214.6 9.4c-12.5-12.5-32.8-12.5-45.3 0l-160 160c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L160 109.3 160 480c0 17.7 14.3 32 32 32s32-14.3 32-32l0-370.7 105.4 105.4c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-160-160z"]
+};
 var faPuzzlePiece = {
   prefix: "fas",
   iconName: "puzzle-piece",
@@ -254,6 +259,11 @@ var faUser = {
   prefix: "fas",
   iconName: "user",
   icon: [448, 512, [128100, 62144, 62470, "user-alt", "user-large"], "f007", "M224 248a120 120 0 1 0 0-240 120 120 0 1 0 0 240zm-29.7 56C95.8 304 16 383.8 16 482.3 16 498.7 29.3 512 45.7 512l356.6 0c16.4 0 29.7-13.3 29.7-29.7 0-98.5-79.8-178.3-178.3-178.3l-59.4 0z"]
+};
+var faListOl = {
+  prefix: "fas",
+  iconName: "list-ol",
+  icon: [512, 512, ["list-1-2", "list-numeric"], "f0cb", "M0 72C0 58.8 10.7 48 24 48l48 0c13.3 0 24 10.7 24 24l0 104 24 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-96 0c-13.3 0-24-10.7-24-24s10.7-24 24-24l24 0 0-80-24 0C10.7 96 0 85.3 0 72zM30.4 301.2C41.8 292.6 55.7 288 70 288l4.9 0c33.7 0 61.1 27.4 61.1 61.1 0 19.6-9.4 37.9-25.2 49.4l-24 17.5 33.2 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-90.7 0C13.1 464 0 450.9 0 434.7 0 425.3 4.5 416.5 12.1 411l70.5-51.3c3.4-2.5 5.4-6.4 5.4-10.6 0-7.2-5.9-13.1-13.1-13.1L70 336c-3.9 0-7.7 1.3-10.8 3.6L38.4 355.2c-10.6 8-25.6 5.8-33.6-4.8S-1 324.8 9.6 316.8l20.8-15.6zM224 64l256 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-256 0c-17.7 0-32-14.3-32-32s14.3-32 32-32zm0 160l256 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-256 0c-17.7 0-32-14.3-32-32s14.3-32 32-32zm0 160l256 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-256 0c-17.7 0-32-14.3-32-32s14.3-32 32-32z"]
 };
 var faCube = {
   prefix: "fas",
@@ -375,6 +385,11 @@ var faCopy = {
   iconName: "copy",
   icon: [448, 512, [], "f0c5", "M192 0c-35.3 0-64 28.7-64 64l0 256c0 35.3 28.7 64 64 64l192 0c35.3 0 64-28.7 64-64l0-200.6c0-17.4-7.1-34.1-19.7-46.2L370.6 17.8C358.7 6.4 342.8 0 326.3 0L192 0zM64 128c-35.3 0-64 28.7-64 64L0 448c0 35.3 28.7 64 64 64l192 0c35.3 0 64-28.7 64-64l0-16-64 0 0 16-192 0 0-256 16 0 0-64-16 0z"]
 };
+var faCompress = {
+  prefix: "fas",
+  iconName: "compress",
+  icon: [448, 512, [], "f066", "M160 64c0-17.7-14.3-32-32-32S96 46.3 96 64l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"]
+};
 var faEyeSlash = {
   prefix: "fas",
   iconName: "eye-slash",
@@ -414,6 +429,11 @@ var faMicrochip = {
   prefix: "fas",
   iconName: "microchip",
   icon: [512, 512, [], "f2db", "M176 24c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 40c-35.3 0-64 28.7-64 64l-40 0c-13.3 0-24 10.7-24 24s10.7 24 24 24l40 0 0 56-40 0c-13.3 0-24 10.7-24 24s10.7 24 24 24l40 0 0 56-40 0c-13.3 0-24 10.7-24 24s10.7 24 24 24l40 0c0 35.3 28.7 64 64 64l0 40c0 13.3 10.7 24 24 24s24-10.7 24-24l0-40 56 0 0 40c0 13.3 10.7 24 24 24s24-10.7 24-24l0-40 56 0 0 40c0 13.3 10.7 24 24 24s24-10.7 24-24l0-40c35.3 0 64-28.7 64-64l40 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-40 0 0-56 40 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-40 0 0-56 40 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-40 0c0-35.3-28.7-64-64-64l0-40c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 40-56 0 0-40c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 40-56 0 0-40zM160 128l192 0c17.7 0 32 14.3 32 32l0 192c0 17.7-14.3 32-32 32l-192 0c-17.7 0-32-14.3-32-32l0-192c0-17.7 14.3-32 32-32zm16 48l0 160 160 0 0-160-160 0z"]
+};
+var faArrowDown = {
+  prefix: "fas",
+  iconName: "arrow-down",
+  icon: [384, 512, [8595], "f063", "M169.4 502.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 402.7 224 32c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 370.7-105.4-105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z"]
 };
 var faFireBurner = {
   prefix: "fas",
@@ -494,6 +514,38 @@ var DEFAULT_PROFILE = {
   customThinkEffort: "100",
   thinkingV2: false,
   v9Limits: { leanMin: 300, leanMax: 400, fullMin: 700, fullMax: 1200 },
+  storyConfig: {
+    enabled: false,
+    genre: "",
+    culture: "",
+    era: "",
+    pov: "",
+    focus: "",
+    tone: "",
+    narratorPresence: "",
+    npcSpeechStyle: "",
+    npcDisposition: "",
+    pace: "",
+    difficulty: "",
+    friction: "",
+    explicitness: "",
+    length: "",
+    notes: ""
+  },
+  configPresets: [],
+  blockStack: { order: [], custom: [], overrides: {} },
+  statBlocks: {
+    bonds: {
+      fields: [
+        { id: "mood", label: "Mood", type: "text", hint: "emotional surface" },
+        { id: "affection", label: "Affection", type: "meter", max: 100, start: 20 },
+        { id: "trust", label: "Trust", type: "meter", max: 100, start: 30 },
+        { id: "desire", label: "Desire", type: "meter", max: 100, start: 0 }
+      ]
+    },
+    sheet: { fields: [] }
+  },
+  worldState: { compactEnabled: false, fullFreq: 5 },
   storyPlan: {
     enabled: false,
     backend: "direct",
@@ -562,6 +614,20 @@ function mergeProfile(raw) {
   merged.dnRatio = { ...base.dnRatio, ...input.dnRatio || {} };
   merged.onomatopoeia = { ...base.onomatopoeia, ...input.onomatopoeia || {} };
   merged.v9Limits = { ...base.v9Limits, ...input.v9Limits || {} };
+  merged.storyConfig = { ...base.storyConfig, ...input.storyConfig || {} };
+  merged.worldState = { ...base.worldState, ...input.worldState || {} };
+  merged.configPresets = Array.isArray(input.configPresets) ? input.configPresets : [];
+  merged.blockStack = {
+    ...base.blockStack,
+    ...input.blockStack || {},
+    order: Array.isArray(input.blockStack?.order) ? input.blockStack.order : [],
+    custom: Array.isArray(input.blockStack?.custom) ? input.blockStack.custom : [],
+    overrides: input.blockStack?.overrides || {}
+  };
+  merged.statBlocks = {
+    ...base.statBlocks,
+    ...input.statBlocks || {}
+  };
   merged.storyPlan = { ...base.storyPlan, ...input.storyPlan || {} };
   merged.imageGen = { ...base.imageGen, ...input.imageGen || {} };
   merged.userWordCount = String(input.userWordCount ?? base.userWordCount);
@@ -616,6 +682,463 @@ var RESOLUTIONS = [
   { label: "512 x 768 (SD 1.5 Portrait)", w: 512, h: 768 }
 ];
 
+// src/story-config.ts
+var storyConfigFields = [
+  {
+    key: "genre",
+    tag: "genre",
+    label: "Genre",
+    icon: "fa-masks-theater",
+    color: "#f59e0b",
+    type: "text",
+    placeholder: "e.g. horror, romance",
+    aiNote: "sets the conventions the story plays straight, never comments on",
+    hint: "The story's genre and the conventions that come with it. Played straight, never commented on.",
+    chips: ["slice of life", "noir", "horror", "romance", "workplace comedy", "political thriller", "survival", "dark fantasy", "sci-fi", "mystery", "adventure", "tragedy"]
+  },
+  {
+    key: "culture",
+    tag: "culture",
+    label: "Culture & Setting",
+    icon: "fa-globe",
+    color: "#22c55e",
+    type: "text",
+    placeholder: "e.g. Japanese, Western",
+    aiNote: "the cultural world — names, honorifics, food, manners, idiom",
+    hint: "The cultural world the story runs on — names, honorifics, food, manners, social rules and the idiom people speak in. Works with era to place the story.",
+    chips: [
+      "Japanese",
+      "Korean",
+      "Chinese",
+      "wuxia / xianxia",
+      "Southeast Asian",
+      "Indian",
+      "Middle Eastern",
+      "North African",
+      "West African",
+      "Latin American",
+      "Brazilian",
+      "American",
+      "Wild West frontier",
+      "British",
+      "Irish",
+      "French",
+      "Italian",
+      "Mediterranean",
+      "Nordic",
+      "Slavic",
+      "Greco-Roman",
+      "high fantasy European",
+      "steampunk Victorian",
+      "cyberpunk East Asian",
+      "post-Soviet"
+    ]
+  },
+  {
+    key: "era",
+    tag: "era",
+    label: "Era",
+    icon: "fa-hourglass-half",
+    color: "#d97706",
+    type: "text",
+    placeholder: "e.g. 1980s",
+    aiNote: "the period the world runs on",
+    hint: "The year or period the world runs on.",
+    chips: ["ancient", "medieval", "renaissance", "victorian", "1920s", "1950s", "1970s", "1980s", "1990s", "present day", "near future", "far future", "post-apocalyptic"]
+  },
+  {
+    key: "pov",
+    tag: "pov",
+    label: "Point of View",
+    icon: "fa-eye",
+    color: "#3b82f6",
+    type: "select",
+    hint: "Narrative person and where the camera sits. Never loosens the {{user}} boundary.",
+    customPlaceholder: "e.g. third limited, sitting behind Maya's eyes",
+    options: [
+      "second person on {{user}}",
+      "third limited",
+      "third limited following one NPC",
+      "third omniscient",
+      "first person",
+      "roving"
+    ]
+  },
+  {
+    key: "focus",
+    tag: "focus",
+    label: "Focus",
+    icon: "fa-crosshairs",
+    color: "#eab308",
+    type: "text",
+    placeholder: "e.g. the camera follows Maya",
+    aiNote: "whose story the camera favours",
+    hint: "Whose story this is, if the camera should favour someone other than {{user}}. Name them.",
+    chips: []
+  },
+  {
+    key: "tone",
+    tag: "narration tone",
+    label: "Narration Tone",
+    icon: "fa-cloud-sun-rain",
+    color: "#a855f7",
+    type: "text",
+    placeholder: "e.g. bleak, absurd",
+    aiNote: "the emotional weather over everything; overrides the default register",
+    hint: "The mood that sits over the whole story, whatever is happening in a given scene.",
+    chips: ["warm", "bleak", "absurd", "tense", "melancholy", "playful", "dreamlike", "clinical", "wistful", "manic"]
+  },
+  {
+    key: "narratorPresence",
+    tag: "narrator_presence",
+    label: "Narrator Presence",
+    icon: "fa-comment-dots",
+    color: "#14b8a6",
+    type: "select",
+    aiNote: "how visible the narrator's attitude is",
+    customPlaceholder: "e.g. heavy. comment on everything",
+    hint: "How visible the narrator's attitude is. Light is your preset default.",
+    defaultLabel: "light",
+    defaultAliases: ["light", "light (one beat per response)", "light (default: one beat per response)"],
+    options: [
+      "invisible (report only, no coloring)",
+      "heavy (commentary throughout)"
+    ]
+  },
+  {
+    key: "npcSpeechStyle",
+    tag: "npc_speech_style",
+    label: "NPC Speech Style",
+    icon: "fa-quote-left",
+    color: "#0ea5e9",
+    type: "text",
+    placeholder: "e.g. 1980s poetic",
+    aiNote: "how NPCs sound when they speak",
+    hint: "Override how the NPCs sound.",
+    chips: ["medieval poetic", "shakespearean", "victorian formal", "1920s slang", "1970s street", "1980s poetic", "modern casual", "corporate", "military clipped", "rural drawl", "cyberpunk street", "archaic high fantasy"]
+  },
+  {
+    key: "npcDisposition",
+    tag: "npc_disposition",
+    label: "NPC Disposition",
+    icon: "fa-users",
+    color: "#8b5cf6",
+    type: "select",
+    aiNote: "the cast's starting stance toward {{user}}; individuals still move based on what they actually do",
+    customPlaceholder: "e.g. cold. the NPCs don't like {{user}}",
+    hint: "How the cast feels about {{user}} before they earn anything else. Ordinary is your preset default.",
+    defaultLabel: "ordinary",
+    defaultAliases: ["ordinary"],
+    options: [
+      "warm",
+      "wary",
+      "cold",
+      "hostile"
+    ]
+  },
+  {
+    key: "difficulty",
+    tag: "difficulty",
+    label: "Difficulty",
+    icon: "fa-mountain",
+    color: "#ef4444",
+    type: "select",
+    aiNote: "how hard the world pushes back on what {{user}} attempts",
+    customPlaceholder: "e.g. hard. the world is against {{user}}",
+    hint: "How hard the world pushes back on what {{user}} attempts. Realistic is your preset default.",
+    defaultLabel: "realistic",
+    defaultAliases: ["realistic", "realistic (default)"],
+    options: [
+      "forgiving (most attempts land)",
+      "harsh (competence required, failure common, mistakes carry a real cost)"
+    ]
+  },
+  {
+    key: "friction",
+    tag: "friction",
+    label: "Friction",
+    icon: "fa-bolt",
+    color: "#f97316",
+    type: "select",
+    aiNote: "how often complications arrive",
+    customPlaceholder: "e.g. high. trouble is always around the corner",
+    hint: "How often trouble arrives. Normal is your preset default.",
+    defaultLabel: "normal",
+    defaultAliases: ["normal", "normal (the preset's own curve)"],
+    options: [
+      "low (only ever as earned consequence)",
+      "high (complications every scene, pressure never fully releasing)"
+    ]
+  },
+  {
+    key: "explicitness",
+    tag: "explicitness",
+    label: "Explicitness",
+    icon: "fa-fire",
+    color: "#e11d48",
+    type: "select",
+    aiNote: "how far scenes go and how directly they are written",
+    customPlaceholder: "e.g. graphic. give details",
+    hint: "How far scenes go and how directly they are written.",
+    options: [
+      "fade to black",
+      "plain",
+      "graphic"
+    ]
+  },
+  {
+    key: "pace",
+    tag: "pace",
+    label: "Pace",
+    icon: "fa-gauge-high",
+    color: "#10b981",
+    type: "select",
+    aiNote: "how fast story time moves and how freely scenes skip ahead",
+    customPlaceholder: "e.g. steady, but skip anything that isn't a real beat",
+    hint: "How fast story time moves.",
+    options: [
+      "slow burn",
+      "steady",
+      "fast"
+    ]
+  },
+  {
+    key: "length",
+    tag: "length",
+    label: "Length",
+    icon: "fa-ruler-horizontal",
+    color: "#06b6d4",
+    type: "select",
+    aiNote: "target size of each response",
+    customPlaceholder: "e.g. around 300 words, longer when a scene earns it",
+    hint: "How long each reply should run.",
+    options: [
+      { label: "flexible", value: "flexible — as short as 50 words for a quick one-on-one exchange, up to 700 when a scene earns the space. Match the length to what the moment actually needs; never pad to reach a number" },
+      "250–350 words",
+      "450–550 words",
+      "minimum 900 words"
+    ]
+  },
+  {
+    key: "notes",
+    tag: "notes",
+    label: "Notes",
+    icon: "fa-note-sticky",
+    color: "#94a3b8",
+    type: "textarea",
+    placeholder: "e.g. never let Maya win",
+    aiNote: "standing instruction, applies to the whole story",
+    hint: "Any standing instruction that doesn't fit a field above."
+  }
+];
+var builtInConfigPresets = [
+  {
+    id: "cfg_grimdark",
+    name: "Grimdark Survival",
+    builtin: true,
+    values: { genre: "survival, dark fantasy", tone: "bleak", pov: "third limited", pace: "steady", length: "450–550 words", difficulty: "harsh (competence required, failure common, mistakes carry a real cost)", friction: "high (complications every scene, pressure never fully releasing)", npcDisposition: "wary", explicitness: "graphic", narratorPresence: "", focus: "", culture: "high fantasy European", era: "", npcSpeechStyle: "", notes: "" }
+  },
+  {
+    id: "cfg_cozy",
+    name: "Cozy Slice of Life",
+    builtin: true,
+    values: { genre: "slice of life", tone: "warm", pov: "second person on {{user}}", pace: "slow burn", length: "250–350 words", difficulty: "forgiving (most attempts land)", friction: "low (only ever as earned consequence)", npcDisposition: "warm", explicitness: "fade to black", narratorPresence: "invisible (report only, no coloring)", focus: "", era: "present day", npcSpeechStyle: "modern casual", notes: "" }
+  },
+  {
+    id: "cfg_noir",
+    name: "Noir Mystery",
+    builtin: true,
+    values: { genre: "noir, mystery", tone: "melancholy", pov: "first person", pace: "steady", length: "450–550 words", difficulty: "", friction: "", npcDisposition: "wary", explicitness: "plain", narratorPresence: "heavy (commentary throughout)", focus: "", culture: "American", era: "1950s", npcSpeechStyle: "1920s slang", notes: "" }
+  },
+  {
+    id: "cfg_horror",
+    name: "Slow Dread Horror",
+    builtin: true,
+    values: { genre: "horror", tone: "tense", pov: "third limited", pace: "slow burn", length: "minimum 900 words", difficulty: "harsh (competence required, failure common, mistakes carry a real cost)", friction: "high (complications every scene, pressure never fully releasing)", npcDisposition: "cold", explicitness: "graphic", narratorPresence: "", focus: "", era: "", npcSpeechStyle: "", notes: "Never resolve a threat in the same scene it appears." }
+  },
+  {
+    id: "cfg_romance",
+    name: "Slow Burn Romance",
+    builtin: true,
+    values: { genre: "romance", tone: "warm", pov: "second person on {{user}}", pace: "slow burn", length: "450–550 words", difficulty: "", friction: "", npcDisposition: "", explicitness: "plain", narratorPresence: "", focus: "", era: "", npcSpeechStyle: "", notes: "" }
+  }
+];
+function countActiveConfigFields(cfg) {
+  if (!cfg)
+    return 0;
+  return storyConfigFields.filter((field) => cfg[field.key] && String(cfg[field.key]).trim() !== "").length;
+}
+function configOptionLabel(option) {
+  return typeof option === "string" ? option : option.label;
+}
+function configOptionValue(option) {
+  return typeof option === "string" ? option : option.value;
+}
+function allConfigPresets(saved = []) {
+  return [...builtInConfigPresets, ...saved];
+}
+
+// src/blocks.ts
+var BLOCK_REGISTRY = [
+  {
+    id: "cyoa",
+    tag: "CYOA",
+    label: "Choices",
+    emoji: "\uD83C\uDFB2",
+    icon: "fa-list-check",
+    color: "#38bdf8",
+    visibility: "open",
+    builtin: true,
+    preferFirst: true,
+    source: "cyoa",
+    legacyIds: ["cyoa"]
+  },
+  {
+    id: "world",
+    tag: "World_State",
+    label: "World State",
+    emoji: "\uD83D\uDCCC",
+    icon: "fa-thumbtack",
+    color: "#f59e0b",
+    visibility: "open",
+    builtin: true,
+    source: "infoblock",
+    legacyIds: ["info"]
+  },
+  {
+    id: "chatter",
+    tag: "NPC_Inner_Chatter",
+    label: "NPC Inner Chatter",
+    emoji: "\uD83D\uDCAD",
+    icon: "fa-comment-dots",
+    color: "#a855f7",
+    visibility: "open",
+    builtin: true,
+    source: "npc_inner_chatter",
+    legacyIds: ["npc_inner_chatter", "npc_inner_chatter_v2"]
+  },
+  {
+    id: "bonds",
+    tag: "Bonds",
+    label: "Bonds",
+    emoji: "❤️",
+    icon: "fa-heart",
+    color: "#f43f5e",
+    visibility: "open",
+    builtin: true,
+    build: (profile) => buildBondsTemplate(profile)
+  },
+  {
+    id: "sheet",
+    tag: "Character_Sheet",
+    label: "Character Sheet",
+    emoji: "\uD83C\uDF92",
+    icon: "fa-shield-halved",
+    color: "#38bdf8",
+    visibility: "open",
+    builtin: true,
+    build: (profile) => buildSheetTemplate(profile)
+  },
+  {
+    id: "newNpc",
+    tag: "New_NPC",
+    label: "New NPC Dossier",
+    emoji: "\uD83C\uDD95",
+    icon: "fa-user-plus",
+    color: "#10b981",
+    visibility: "open",
+    builtin: true,
+    repeating: true,
+    system: true,
+    slot: "[A <New_NPC> dossier goes here when this response introduces an NPC that earns one. Follow the NPC DOSSIER rules above. Omit this tag entirely otherwise.]",
+    requires: (profile) => Boolean(profile.npcBank?.enabled),
+    slotRequires: (dict) => Boolean(String(dict.npcDossier || "").trim())
+  },
+  {
+    id: "tracker",
+    tag: "Story_Tracker",
+    label: "Story Tracker",
+    emoji: "\uD83C\uDFAC",
+    icon: "fa-map",
+    color: "#f43f5e",
+    visibility: "open",
+    builtin: true,
+    system: true,
+    source: "storytracker",
+    requires: (profile) => Boolean(profile.storyPlan?.enabled)
+  }
+];
+function arrangeableBlocks() {
+  return BLOCK_REGISTRY.filter((block) => !block.system);
+}
+function statFields(profile, blockId) {
+  const config = profile.statBlocks?.[blockId];
+  return Array.isArray(config?.fields) ? config.fields.filter((field) => field && field.label) : [];
+}
+function statFieldSpec(field) {
+  const max = field.max || 100;
+  switch (field.type) {
+    case "meter":
+      return `${field.label}: [0-${max}]/${max} [(±N reason) or (=)]`;
+    case "number":
+      return `${field.label}: [number] [(±N reason) or (=)]`;
+    case "list":
+      return `${field.label}: [${field.hint || "comma separated"}]`;
+    default:
+      return `${field.label}: [${field.hint || "value"}]`;
+  }
+}
+function statRules(fields, subject, options = {}) {
+  const tracked = fields.filter((field) => field.type === "meter" || field.type === "number");
+  if (!tracked.length)
+    return "";
+  const meters = fields.filter((field) => field.type === "meter");
+  const seeds = tracked.map((field) => `${field.label} ${field.start !== undefined ? field.start : 0}`).join(", ");
+  const lines = [
+    `- Carry every number forward from the previous ${subject} block. Never reset one, and never invent a value that already exists.`,
+    "- A number moves only when something in THIS scene moved it. Write the change and the reason in brackets, e.g. (-6 he apologised and she heard pity). When nothing moved it, write (=)."
+  ];
+  if (meters.length) {
+    lines.push(`- ${meters.map((field) => field.label).join(", ")} move at most 10 in one reply unless the scene plainly earns more.`);
+  }
+  lines.push(`- Starting values when there is no previous one${options.perSubject ? " for that person" : ""}: ${seeds}.`);
+  return lines.join(`
+`);
+}
+function buildBondsTemplate(profile) {
+  const fields = statFields(profile, "bonds");
+  if (!fields.length)
+    return "";
+  const line = fields.map(statFieldSpec).join(" | ");
+  return [
+    "[One line per named NPC present in the scene, plus any NPC whose numbers changed this scene. Nobody else.",
+    statRules(fields, "Bonds", { perSubject: true }),
+    "- These are feelings, not bodies. Do not describe clothing, posture or location here.]",
+    "",
+    `[NPC Name]: ${line}`
+  ].filter(Boolean).join(`
+`);
+}
+function buildSheetTemplate(profile) {
+  const fields = statFields(profile, "sheet");
+  if (!fields.length)
+    return "";
+  const inline = fields.filter((field) => !field.ownLine).map(statFieldSpec).join(" | ");
+  const own = fields.filter((field) => field.ownLine).map(statFieldSpec);
+  return [
+    "[{{user}}'s sheet.",
+    statRules(fields, "Character Sheet"),
+    "- Inventory and skills change only when the story changes them. Do not restock or re-equip on your own.]",
+    "",
+    inline,
+    ...own
+  ].filter(Boolean).join(`
+`);
+}
+function blockById(profile, id) {
+  return BLOCK_REGISTRY.find((block) => block.id === id) || (profile.blockStack?.custom || []).find((block) => block.id === id);
+}
+
 // src/frontend.ts
 var ctxRef = null;
 var appMount = null;
@@ -666,6 +1189,7 @@ var tabs = [
   { title: "Core Engine", sub: "Choose the core ruleset that drives all NPC behavior and world logic.", short: "Engine", icon: "fa-server", color: "#f59e0b", render: renderEngines },
   { title: "Persona & Toggles", sub: "Define the personality and extra toggles.", short: "Persona", icon: "fa-user-astronaut", color: "#ec4899", render: renderPersona },
   { title: "Writing Style", sub: "Apply a prebuilt style, generate one with AI, or build your own.", short: "Style", icon: "fa-pen-nib", color: "#a855f7", render: renderStyle },
+  { title: "Story Config", sub: "Standing settings for this story. Genre, tone, pacing, difficulty.", short: "Config", icon: "fa-sliders", color: "#eab308", render: renderStoryConfig },
   { title: "Global Settings", sub: "Set response length, output language, and how the AI addresses you.", short: "Global", icon: "fa-earth-americas", color: "#3b82f6", render: renderGlobalSettings },
   { title: "Add-ons & Blocks", sub: "Attach extra modules that appear at the end of every response.", short: "Blocks", icon: "fa-puzzle-piece", color: "#10b981", render: renderBlocks },
   { title: "Chain of Thought", sub: "Control the AI's internal reasoning process before it writes.", short: "Thinking", icon: "fa-brain", color: "#8b5cf6", render: renderThinking },
@@ -966,6 +1490,14 @@ function wire(container) {
   });
   container.querySelectorAll("[data-action]").forEach((el) => {
     el.addEventListener("click", () => handleAction(el));
+  });
+  container.querySelectorAll('select[data-action="config-select"]').forEach((select) => {
+    select.addEventListener("change", () => {
+      const path = select.dataset.path;
+      setPath(state.profile, path, select.value === "__custom__" ? " " : select.value);
+      saveProfileSoon();
+      render();
+    });
   });
   container.querySelectorAll("[data-bind]").forEach((input) => {
     input.addEventListener("change", () => {
@@ -1410,6 +1942,115 @@ ${insights}` : insights;
       render();
       return;
     }
+    if (action === "config-preset") {
+      const preset = allConfigPresets(state.profile.configPresets || []).find((item) => item.id === el.dataset.value);
+      if (!preset)
+        return;
+      if (!confirm(`Load "${preset.name}"? This overwrites every Story Config field.`))
+        return;
+      const cleared = { enabled: true };
+      for (const field of storyConfigFields)
+        cleared[field.key] = "";
+      state.profile.storyConfig = { ...cleared, ...preset.values, enabled: true };
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bstack-toggle") {
+      const id = el.dataset.id || el.dataset.value || "";
+      const order = state.profile.blockStack.order;
+      const at = order.indexOf(id);
+      if (at >= 0)
+        order.splice(at, 1);
+      else {
+        const def = blockById(state.profile, id);
+        if (def?.preferFirst)
+          order.unshift(id);
+        else
+          order.push(id);
+      }
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bstack-move") {
+      const id = el.dataset.id || "";
+      const direction = Number(el.dataset.dir || 0);
+      const order = state.profile.blockStack.order;
+      const at = order.indexOf(id);
+      const to = at + direction;
+      if (at < 0 || to < 0 || to >= order.length)
+        return;
+      order.splice(to, 0, ...order.splice(at, 1));
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bcustom-new") {
+      const name = prompt("Name for the custom block:");
+      if (!name || !name.trim())
+        return;
+      const tag = name.trim().replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "Custom_Block";
+      const taken = new Set([...BLOCK_REGISTRY.map((b) => b.tag.toLowerCase()), ...state.profile.blockStack.custom.map((b) => b.tag.toLowerCase())]);
+      if (taken.has(tag.toLowerCase())) {
+        alert(`A block already uses the tag <${tag}>. Pick another name.`);
+        return;
+      }
+      state.profile.blockStack.custom.push({
+        id: `custom_${Date.now().toString(36)}`,
+        name: name.trim(),
+        tag,
+        content: ""
+      });
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bcustom-delete") {
+      const id = el.dataset.id || "";
+      const custom = state.profile.blockStack.custom;
+      const at = custom.findIndex((item) => item.id === id);
+      if (at < 0)
+        return;
+      if (!confirm(`Delete "${custom[at].name}"?`))
+        return;
+      custom.splice(at, 1);
+      const order = state.profile.blockStack.order;
+      const inOrder = order.indexOf(id);
+      if (inOrder >= 0)
+        order.splice(inOrder, 1);
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bfield-add") {
+      const blockId = el.dataset.block || "";
+      const label = prompt("Field label (e.g. Jealousy):");
+      if (!label || !label.trim())
+        return;
+      const target = state.profile.statBlocks[blockId] || (state.profile.statBlocks[blockId] = { fields: [] });
+      target.fields.push({
+        id: label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+        label: label.trim(),
+        type: "meter",
+        max: 100,
+        start: 0
+      });
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bfield-delete") {
+      const blockId = el.dataset.block || "";
+      const index = Number(el.dataset.index || -1);
+      const fields = state.profile.statBlocks[blockId]?.fields;
+      if (!fields || index < 0 || index >= fields.length)
+        return;
+      fields.splice(index, 1);
+      saveProfileSoon();
+      render();
+      return;
+    }
     if (action === "select-engine") {
       const engineId = el.dataset.value || "";
       state.profile.mode = engineId;
@@ -1447,23 +2088,23 @@ ${insights}` : insights;
     if (action === "npc-scan")
       return runTask("Scanning NPCs...", "npc:scan");
     if (action === "image-manual") {
-      let prompt = root().querySelector("#meg-manual-image-prompt")?.value || "";
+      let prompt2 = root().querySelector("#meg-manual-image-prompt")?.value || "";
       if (state.profile.imageGen.previewPrompt) {
-        if (!prompt.trim()) {
+        if (!prompt2.trim()) {
           state.status = "Building image prompt...";
           render();
           const data = await request("image:prompt");
-          prompt = String(data.prompt || "");
+          prompt2 = String(data.prompt || "");
         }
-        const edited = window.prompt("Image prompt", prompt);
+        const edited = window.prompt("Image prompt", prompt2);
         if (edited === null) {
           state.status = "";
           render();
           return;
         }
-        prompt = edited;
+        prompt2 = edited;
       }
-      return runTask("Generating image...", "image:manual", { prompt });
+      return runTask("Generating image...", "image:manual", { prompt: prompt2 });
     }
     if (action === "image-test")
       return runTask("Testing ComfyUI connection...", "image:connections");
@@ -1807,17 +2448,181 @@ function renderGlobalSettings() {
       </select></div>
     </div>`;
 }
+function renderStoryConfig() {
+  const cfg = state.profile.storyConfig;
+  const active = countActiveConfigFields(cfg);
+  const presets = allConfigPresets(state.profile.configPresets || []);
+  const fieldRow = (field) => {
+    const value = String(cfg[field.key] || "");
+    const path = `storyConfig.${field.key}`;
+    if (field.type === "textarea") {
+      return `
+        <div class="cfg-field">
+          <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span></div>
+          <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
+          <textarea class="ps-modern-input textarea-sm" data-bind="${path}" placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(value)}</textarea>
+        </div>`;
+    }
+    if (field.type === "select") {
+      const options = field.options || [];
+      const values = options.map(configOptionValue);
+      const isCustom = Boolean(value) && !values.includes(value);
+      return `
+        <div class="cfg-field">
+          <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span>${value ? `<button class="cfg-clear" type="button" data-action="select" data-path="${path}" data-value="" title="Back to Default">${icon("fa-rotate-left")}</button>` : ""}</div>
+          <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
+          <select class="ps-modern-input" data-action="config-select" data-path="${path}">
+            <option value="" ${!value ? "selected" : ""}>Default${field.defaultLabel ? ` (${escapeHtml(field.defaultLabel)})` : ""}</option>
+            ${options.map((option) => {
+        const optionValue = configOptionValue(option);
+        return `<option value="${escapeHtml(optionValue)}" ${value === optionValue ? "selected" : ""}>${escapeHtml(configOptionLabel(option))}</option>`;
+      }).join("")}
+            <option value="__custom__" ${isCustom ? "selected" : ""}>Custom…</option>
+          </select>
+          ${isCustom ? `<input type="text" class="ps-modern-input" style="margin-top:8px;" data-bind="${path}" value="${escapeHtml(value.trim())}" placeholder="${escapeHtml(field.customPlaceholder || "")}" />` : ""}
+        </div>`;
+    }
+    return `
+      <div class="cfg-field">
+        <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span>${value ? `<button class="cfg-clear" type="button" data-action="select" data-path="${path}" data-value="" title="Back to Default">${icon("fa-rotate-left")}</button>` : ""}</div>
+        <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
+        <input type="text" class="ps-modern-input" data-bind="${path}" value="${escapeHtml(value)}" placeholder="${escapeHtml(field.placeholder || "")}" />
+        ${(field.chips || []).length ? `<div class="cfg-chips">${(field.chips || []).map((chip) => `<button type="button" class="cfg-chip ${value === chip ? "active" : ""}" data-action="select" data-path="${path}" data-value="${escapeHtml(chip)}">${escapeHtml(chip)}</button>`).join("")}</div>` : ""}
+      </div>`;
+  };
+  return `
+    ${tabHeader("Story Config", "Standing settings for this story. These override anything above them.", "fa-sliders", "#eab308", cfg.enabled ? `${active} Active` : "Disabled", cfg.enabled ? "#10b981" : "#a1a1aa", cfg.enabled ? "fa-circle-check" : "fa-circle-xmark")}
+    ${presetFeatureWarning(["story-config"])}
+    <div id="cfg_enable_card" class="mtab-toggle-row ${cfg.enabled ? "active" : ""}" data-action="toggle" data-path="storyConfig.enabled" style="margin-bottom: 20px;">
+      <div class="toggle-info"><div class="toggle-label">${icon("fa-sliders")} Enable Story Config</div><div class="toggle-desc">Injects a &lt;config&gt; block that wins over anything earlier in the prompt. Requires a preset with the [[config]] hook.</div></div>
+      <div class="ps-switch"></div>
+    </div>
+    <div id="cfg_main_content" style="display:${cfg.enabled ? "block" : "none"};">
+      <div class="mtab-panel">
+        <div class="mtab-panel-title gold">${icon("fa-wand-magic-sparkles")} Starter Presets</div>
+        <div class="mtab-callout">${icon("fa-circle-info")}<span>Loading a preset overwrites every field below. Your own values are not kept.</span></div>
+        <div class="mtab-card-grid compact">
+          ${presets.map((preset) => infoCard({
+    title: preset.name,
+    sub: preset.builtin ? "Built-in" : "Saved",
+    active: false,
+    action: "config-preset",
+    value: preset.id
+  })).join("")}
+        </div>
+      </div>
+      <div class="cfg-grid">
+        ${storyConfigFields.map(fieldRow).join("")}
+      </div>
+      <div class="mtab-callout gold" style="margin-top:16px;">${icon("fa-triangle-exclamation")}<span><strong>Blank means Default.</strong> A blank field emits no line at all, so the engine keeps its own judgement for it.</span></div>
+    </div>`;
+}
 function renderBlocks() {
   const blocks = state.logic?.blocks || [];
   const activeMode = state.engines.find((engine) => engine.id === state.profile.mode);
   const customAddons = Array.isArray(activeMode?.customToggles) ? activeMode.customToggles.filter((item) => item.location === "addons") : [];
+  const stack = state.profile.blockStack;
+  const ws = state.profile.worldState;
+  const inStack = (id) => stack.order.includes(id);
+  const stackRow = (id, index) => {
+    const def = blockById(state.profile, id);
+    if (!def)
+      return "";
+    return `
+      <div class="bstack-row">
+        <div class="bstack-grip">${escapeHtml(def.emoji || "\uD83D\uDD39")}</div>
+        <div class="bstack-name">
+          <div class="bstack-title" style="color:${def.color || "var(--gold)"}">${escapeHtml(def.label || def.name || id)}</div>
+          <div class="bstack-tag">&lt;${escapeHtml(def.tag)}&gt;</div>
+        </div>
+        <div class="bstack-actions">
+          <button type="button" class="ps-modern-btn secondary" title="Move up" data-action="bstack-move" data-id="${escapeHtml(id)}" data-dir="-1" ${index === 0 ? "disabled" : ""}>${icon("fa-arrow-up")}</button>
+          <button type="button" class="ps-modern-btn secondary" title="Move down" data-action="bstack-move" data-id="${escapeHtml(id)}" data-dir="1" ${index === stack.order.length - 1 ? "disabled" : ""}>${icon("fa-arrow-down")}</button>
+          <button type="button" class="ps-modern-btn secondary danger" title="Remove from stack" data-action="bstack-toggle" data-id="${escapeHtml(id)}">${icon("fa-xmark")}</button>
+        </div>
+      </div>`;
+  };
+  const statEditor = (blockId, label) => {
+    const fields = state.profile.statBlocks?.[blockId]?.fields || [];
+    return `
+      <div class="mtab-panel">
+        <div class="panel-heading-row">
+          <div class="mtab-panel-title gold">${icon("fa-sliders")} ${escapeHtml(label)} Fields</div>
+          <button class="wstyle-gen-btn" type="button" data-action="bfield-add" data-block="${escapeHtml(blockId)}">${icon("fa-plus")} Add Field</button>
+        </div>
+        <div class="mtab-callout">${icon("fa-circle-info")}<span>The template the model is asked for is generated from this list, so adding a field changes the prompt.</span></div>
+        ${fields.length ? fields.map((field, index) => `
+          <div class="bfield-row">
+            <input type="text" class="ps-modern-input" style="flex:2;" data-bind="statBlocks.${blockId}.fields.${index}.label" value="${escapeHtml(field.label)}" placeholder="Label" />
+            <select class="ps-modern-input" style="flex:1;" data-bind="statBlocks.${blockId}.fields.${index}.type">
+              ${["text", "meter", "number", "list"].map((type) => `<option value="${type}" ${field.type === type ? "selected" : ""}>${type}</option>`).join("")}
+            </select>
+            ${field.type === "meter" || field.type === "number" ? `<input type="number" class="ps-modern-input" style="width:80px;" data-bind="statBlocks.${blockId}.fields.${index}.start" value="${field.start ?? 0}" title="Starting value" />` : `<input type="text" class="ps-modern-input" style="flex:1;" data-bind="statBlocks.${blockId}.fields.${index}.hint" value="${escapeHtml(field.hint || "")}" placeholder="hint" />`}
+            <button type="button" class="ps-modern-btn secondary danger" title="Delete field" data-action="bfield-delete" data-block="${escapeHtml(blockId)}" data-index="${index}">${icon("fa-trash")}</button>
+          </div>`).join("") : `<div class="dev-empty">No fields. This block emits nothing until it has at least one.</div>`}
+      </div>`;
+  };
   return `
     ${tabHeader("Response Blocks", "Attach extra UI panels to every AI response.", "fa-cubes", "#10b981", `${state.profile.blocks.length} Active`, "#10b981", "fa-cubes")}
     ${presetFeatureWarning(["response-blocks"])}
     <div class="mtab-card-grid">
       ${blocks.map((item) => moduleCard(item, state.profile.blocks.includes(item.id), "blocks", !!(activeMode && typeof activeMode[item.id] === "string" && activeMode[item.id].trim()))).join("")}
       ${customAddons.length ? `<div style="grid-column: 1 / -1;"><div class="wstyle-section-head green" style="margin:8px 0;">${icon("fa-puzzle-piece")} Custom Engine Add-ons</div></div>${customAddons.map((item) => infoCard({ title: item.name, sub: `Custom Module -> [[${item.attachPoint}]]`, active: !!state.profile.toggles[item.id], action: "toggle", path: `toggles.${item.id}` })).join("")}` : ""}
-    </div>`;
+    </div>
+
+    <div class="wstyle-section-head green" style="margin-top:24px;">${icon("fa-layer-group")} Blocks Envelope</div>
+    ${presetFeatureWarning(["blocks-envelope"])}
+    <div class="mtab-callout gold">${icon("fa-circle-info")}<span><strong>The stack is membership and order both.</strong> A block that is not in the stack is never emitted. An empty stack falls back to the legacy per-block hooks, so V7 presets keep working.</span></div>
+
+    <div class="mtab-panel">
+      <div class="mtab-panel-title gold">${icon("fa-list-ol")} Emission Order</div>
+      ${stack.order.length ? `<div class="bstack-list">${stack.order.map(stackRow).join("")}</div>` : `<div class="dev-empty">Nothing in the stack. Add a block below.</div>`}
+    </div>
+
+    <div class="mtab-panel">
+      <div class="panel-heading-row">
+        <div class="mtab-panel-title gold">${icon("fa-plus")} Available Blocks</div>
+        <button class="wstyle-gen-btn" type="button" data-action="bcustom-new">${icon("fa-code")} New Custom Block</button>
+      </div>
+      <div class="mtab-card-grid compact">
+        ${arrangeableBlocks().filter((def) => !inStack(def.id)).map((def) => infoCard({
+    title: `${def.emoji || ""} ${def.label}`,
+    sub: `<${def.tag}>`,
+    active: false,
+    action: "bstack-toggle",
+    value: def.id
+  })).join("")}
+        ${(stack.custom || []).filter((def) => !inStack(def.id)).map((def) => infoCard({
+    title: def.name,
+    sub: `<${def.tag}> — custom`,
+    active: false,
+    action: "bstack-toggle",
+    value: def.id
+  })).join("")}
+      </div>
+      ${(stack.custom || []).length ? `
+        <div class="wstyle-section-head purple" style="margin-top:16px;">${icon("fa-code")} Your Custom Blocks</div>
+        ${stack.custom.map((def) => `
+          <div class="bfield-row">
+            <input type="text" class="ps-modern-input" style="flex:1;" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.name" value="${escapeHtml(def.name)}" placeholder="Name" />
+            <input type="text" class="ps-modern-input" style="flex:1;" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.tag" value="${escapeHtml(def.tag)}" placeholder="Tag" />
+            <button type="button" class="ps-modern-btn secondary danger" data-action="bcustom-delete" data-id="${escapeHtml(def.id)}">${icon("fa-trash")}</button>
+          </div>
+          <textarea class="ps-modern-input textarea-sm" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.content" placeholder="What the model should put inside this tag.">${escapeHtml(def.content)}</textarea>`).join("")}` : ""}
+    </div>
+
+    ${state.profile.blocks.includes("info") ? `
+    <div class="mtab-panel">
+      <div class="mtab-panel-title gold">${icon("fa-compress")} Compact World State</div>
+      <div id="ws_compact_card" class="mtab-toggle-row ${ws.compactEnabled ? "active" : ""}" data-action="toggle" data-path="worldState.compactEnabled">
+        <div class="toggle-info"><div class="toggle-label">${icon("fa-compress")} Compact Mode</div><div class="toggle-desc">Emit a short World State most turns and the full one every Nth reply. Cuts the running cost of the block without letting it go stale.</div></div>
+        <div class="ps-switch"></div>
+      </div>
+      ${ws.compactEnabled ? `<div class="mtab-setting-row">${settingText("Full Block Every", "Replies between full World State blocks.")}<input type="number" class="ps-modern-input" style="width:110px;" data-bind="worldState.fullFreq" value="${ws.fullFreq}" min="2" /></div>` : ""}
+    </div>` : ""}
+
+    ${inStack("bonds") ? statEditor("bonds", "Bonds") : ""}
+    ${inStack("sheet") ? statEditor("sheet", "Character Sheet") : ""}`;
 }
 function renderThinking() {
   const currentType = currentCotType();
@@ -2517,19 +3322,20 @@ function activeTabProfileKeys() {
   if (state.devMode)
     return ["mode"];
   const map = {
-    0: ["mode", "toggles", "activeStyleId", "aiRule"],
-    1: ["personality", "toggles"],
-    2: ["activeStyleId", "aiRule", "customStyles", "dnRatio"],
-    3: ["addons", "userWordCount", "v9Limits", "userLanguage", "userPronouns", "disableUtilityPrefill", "onomatopoeia", "toggles"],
-    4: ["blocks"],
-    5: ["model", "thinkEffort", "customThinkEffort", "thinkingV2"],
-    6: ["storyPlan"],
-    7: ["banList", "banListBackend"],
-    8: ["imageGen"],
-    9: ["npcBank"],
-    10: ["memoryCore"]
+    Engine: ["mode", "toggles", "activeStyleId", "aiRule"],
+    Persona: ["personality", "toggles"],
+    Style: ["activeStyleId", "aiRule", "customStyles", "dnRatio"],
+    Config: ["storyConfig", "configPresets"],
+    Global: ["addons", "userWordCount", "v9Limits", "userLanguage", "userPronouns", "disableUtilityPrefill", "onomatopoeia", "toggles"],
+    Blocks: ["blocks", "blockStack", "statBlocks", "worldState"],
+    Thinking: ["model", "thinkEffort", "customThinkEffort", "thinkingV2"],
+    Story: ["storyPlan"],
+    Ban: ["banList", "banListBackend"],
+    Image: ["imageGen"],
+    NPCs: ["npcBank"],
+    Memory: ["memoryCore"]
   };
-  return map[state.activeTab] || [];
+  return map[tabs[state.activeTab]?.short || ""] || [];
 }
 function moduleDesc(id) {
   const descriptions = {
@@ -2636,13 +3442,13 @@ function renderMeguminImageTag(payload) {
     return;
   const id = payload.attrs?.["image-id"] || "";
   const src = payload.attrs?.src || (id ? `/api/v1/images/${id}` : "");
-  const prompt = payload.attrs?.prompt || "";
+  const prompt2 = payload.attrs?.prompt || "";
   if (!src || bubble.querySelector(`[data-megumin-image="${CSS.escape(id || src)}"]`))
     return;
   const html = `
     <div class="meg-inline-image" data-megumin-image="${escapeHtml(id || src)}">
       <img src="${escapeHtml(src)}" alt="Megumin generated image">
-      <div><strong>Megumin Image</strong><span>${escapeHtml(prompt)}</span></div>
+      <div><strong>Megumin Image</strong><span>${escapeHtml(prompt2)}</span></div>
     </div>`;
   ctxRef.dom.inject(bubble, html, "beforeend");
 }
@@ -2651,6 +3457,10 @@ var faLibrary = {
   faAddressBook,
   faAlignLeft,
   faArrowLeft,
+  faArrowDown,
+  faArrowUp,
+  faCompress,
+  faListOl,
   faArrowsRotate,
   faBan,
   faBolt,
@@ -5030,6 +5840,35 @@ var LUMIVERSE_COMPAT_CSS = String.raw`
 .dev-card-actions .ps-modern-btn { flex:1; padding:6px; font-size:.8rem; }
 .gold-fill { background:var(--gold) !important; color:#000 !important; border-color:var(--gold) !important; }
 .dev-empty { padding:20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-color); border-radius:12px; margin-bottom:30px; }
+
+/* Story Config */
+.cfg-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px; }
+.cfg-field { background:var(--panel-bg); border:1px solid var(--border-color); border-radius:12px; padding:14px; }
+.cfg-field-head { display:flex; align-items:center; gap:8px; font-weight:600; font-size:0.85rem; margin-bottom:4px; }
+.cfg-field-head svg { width:14px; height:14px; }
+.cfg-clear { margin-left:auto; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:2px 4px; border-radius:6px; }
+.cfg-clear:hover { color:var(--gold); background:rgba(255,255,255,0.06); }
+.cfg-hint { font-size:0.7rem; color:var(--text-muted); line-height:1.45; margin-bottom:10px; }
+.cfg-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.cfg-chip { font-size:0.68rem; padding:4px 9px; border-radius:999px; cursor:pointer; transition:0.15s;
+  background:rgba(255,255,255,0.05); border:1px solid var(--border-color); color:var(--text-muted); }
+.cfg-chip:hover { border-color:var(--gold); color:var(--text-main); }
+.cfg-chip.active { background:var(--gold); border-color:var(--gold); color:#000; font-weight:600; }
+
+/* Blocks envelope */
+.bstack-list { display:flex; flex-direction:column; gap:8px; }
+.bstack-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:10px;
+  background:rgba(255,255,255,0.03); border:1px solid var(--border-color); }
+.bstack-grip { font-size:1.1rem; width:24px; text-align:center; flex-shrink:0; }
+.bstack-name { flex:1; min-width:0; }
+.bstack-title { font-weight:600; font-size:0.85rem; }
+.bstack-tag { font-family:'Consolas', monospace; font-size:0.68rem; color:var(--text-muted); }
+.bstack-actions { display:flex; gap:6px; flex-shrink:0; }
+.bstack-actions .ps-modern-btn { padding:6px 9px; }
+.bstack-actions .ps-modern-btn[disabled] { opacity:0.35; cursor:not-allowed; }
+.bfield-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.bfield-row .ps-modern-input { padding:8px 10px; font-size:0.78rem; }
+.textarea-sm { min-height:80px; resize:vertical; font-size:0.78rem; margin-bottom:10px; }
 .dev-editor-toolbar { position:sticky; top:-11px; z-index:10; background:var(--bg-panel); padding:10px 0 15px; margin:-10px 0 20px; display:flex; gap:10px; border-bottom:1px solid var(--border-color); box-shadow:0 10px 15px -10px rgba(0,0,0,.6); }
 .dev-editor-toolbar #dev_mode_name { flex:1; font-weight:800; font-size:1.1rem; border-color:var(--gold); }
 .dev-flow { display:flex; flex-direction:column; }

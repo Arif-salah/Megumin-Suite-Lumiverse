@@ -38,6 +38,38 @@ var DEFAULT_PROFILE = {
   customThinkEffort: "100",
   thinkingV2: false,
   v9Limits: { leanMin: 300, leanMax: 400, fullMin: 700, fullMax: 1200 },
+  storyConfig: {
+    enabled: false,
+    genre: "",
+    culture: "",
+    era: "",
+    pov: "",
+    focus: "",
+    tone: "",
+    narratorPresence: "",
+    npcSpeechStyle: "",
+    npcDisposition: "",
+    pace: "",
+    difficulty: "",
+    friction: "",
+    explicitness: "",
+    length: "",
+    notes: ""
+  },
+  configPresets: [],
+  blockStack: { order: [], custom: [], overrides: {} },
+  statBlocks: {
+    bonds: {
+      fields: [
+        { id: "mood", label: "Mood", type: "text", hint: "emotional surface" },
+        { id: "affection", label: "Affection", type: "meter", max: 100, start: 20 },
+        { id: "trust", label: "Trust", type: "meter", max: 100, start: 30 },
+        { id: "desire", label: "Desire", type: "meter", max: 100, start: 0 }
+      ]
+    },
+    sheet: { fields: [] }
+  },
+  worldState: { compactEnabled: false, fullFreq: 5 },
   storyPlan: {
     enabled: false,
     backend: "direct",
@@ -106,6 +138,20 @@ function mergeProfile(raw) {
   merged.dnRatio = { ...base.dnRatio, ...input.dnRatio || {} };
   merged.onomatopoeia = { ...base.onomatopoeia, ...input.onomatopoeia || {} };
   merged.v9Limits = { ...base.v9Limits, ...input.v9Limits || {} };
+  merged.storyConfig = { ...base.storyConfig, ...input.storyConfig || {} };
+  merged.worldState = { ...base.worldState, ...input.worldState || {} };
+  merged.configPresets = Array.isArray(input.configPresets) ? input.configPresets : [];
+  merged.blockStack = {
+    ...base.blockStack,
+    ...input.blockStack || {},
+    order: Array.isArray(input.blockStack?.order) ? input.blockStack.order : [],
+    custom: Array.isArray(input.blockStack?.custom) ? input.blockStack.custom : [],
+    overrides: input.blockStack?.overrides || {}
+  };
+  merged.statBlocks = {
+    ...base.statBlocks,
+    ...input.statBlocks || {}
+  };
   merged.storyPlan = { ...base.storyPlan, ...input.storyPlan || {} };
   merged.imageGen = { ...base.imageGen, ...input.imageGen || {} };
   merged.userWordCount = String(input.userWordCount ?? base.userWordCount);
@@ -360,6 +406,510 @@ function relevantChunks(vault, recentText, topK = 3) {
     }
     return { chunk, score };
   }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, topK).map((item) => item.chunk);
+}
+
+// src/blocks.ts
+var BLOCK_REGISTRY = [
+  {
+    id: "cyoa",
+    tag: "CYOA",
+    label: "Choices",
+    emoji: "\uD83C\uDFB2",
+    icon: "fa-list-check",
+    color: "#38bdf8",
+    visibility: "open",
+    builtin: true,
+    preferFirst: true,
+    source: "cyoa",
+    legacyIds: ["cyoa"]
+  },
+  {
+    id: "world",
+    tag: "World_State",
+    label: "World State",
+    emoji: "\uD83D\uDCCC",
+    icon: "fa-thumbtack",
+    color: "#f59e0b",
+    visibility: "open",
+    builtin: true,
+    source: "infoblock",
+    legacyIds: ["info"]
+  },
+  {
+    id: "chatter",
+    tag: "NPC_Inner_Chatter",
+    label: "NPC Inner Chatter",
+    emoji: "\uD83D\uDCAD",
+    icon: "fa-comment-dots",
+    color: "#a855f7",
+    visibility: "open",
+    builtin: true,
+    source: "npc_inner_chatter",
+    legacyIds: ["npc_inner_chatter", "npc_inner_chatter_v2"]
+  },
+  {
+    id: "bonds",
+    tag: "Bonds",
+    label: "Bonds",
+    emoji: "\u2764\uFE0F",
+    icon: "fa-heart",
+    color: "#f43f5e",
+    visibility: "open",
+    builtin: true,
+    build: (profile) => buildBondsTemplate(profile)
+  },
+  {
+    id: "sheet",
+    tag: "Character_Sheet",
+    label: "Character Sheet",
+    emoji: "\uD83C\uDF92",
+    icon: "fa-shield-halved",
+    color: "#38bdf8",
+    visibility: "open",
+    builtin: true,
+    build: (profile) => buildSheetTemplate(profile)
+  },
+  {
+    id: "newNpc",
+    tag: "New_NPC",
+    label: "New NPC Dossier",
+    emoji: "\uD83C\uDD95",
+    icon: "fa-user-plus",
+    color: "#10b981",
+    visibility: "open",
+    builtin: true,
+    repeating: true,
+    system: true,
+    slot: "[A <New_NPC> dossier goes here when this response introduces an NPC that earns one. Follow the NPC DOSSIER rules above. Omit this tag entirely otherwise.]",
+    requires: (profile) => Boolean(profile.npcBank?.enabled),
+    slotRequires: (dict) => Boolean(String(dict.npcDossier || "").trim())
+  },
+  {
+    id: "tracker",
+    tag: "Story_Tracker",
+    label: "Story Tracker",
+    emoji: "\uD83C\uDFAC",
+    icon: "fa-map",
+    color: "#f43f5e",
+    visibility: "open",
+    builtin: true,
+    system: true,
+    source: "storytracker",
+    requires: (profile) => Boolean(profile.storyPlan?.enabled)
+  }
+];
+function statFields(profile, blockId) {
+  const config = profile.statBlocks?.[blockId];
+  return Array.isArray(config?.fields) ? config.fields.filter((field) => field && field.label) : [];
+}
+function statFieldSpec(field) {
+  const max = field.max || 100;
+  switch (field.type) {
+    case "meter":
+      return `${field.label}: [0-${max}]/${max} [(\xB1N reason) or (=)]`;
+    case "number":
+      return `${field.label}: [number] [(\xB1N reason) or (=)]`;
+    case "list":
+      return `${field.label}: [${field.hint || "comma separated"}]`;
+    default:
+      return `${field.label}: [${field.hint || "value"}]`;
+  }
+}
+function statRules(fields, subject, options = {}) {
+  const tracked = fields.filter((field) => field.type === "meter" || field.type === "number");
+  if (!tracked.length)
+    return "";
+  const meters = fields.filter((field) => field.type === "meter");
+  const seeds = tracked.map((field) => `${field.label} ${field.start !== undefined ? field.start : 0}`).join(", ");
+  const lines = [
+    `- Carry every number forward from the previous ${subject} block. Never reset one, and never invent a value that already exists.`,
+    "- A number moves only when something in THIS scene moved it. Write the change and the reason in brackets, e.g. (-6 he apologised and she heard pity). When nothing moved it, write (=)."
+  ];
+  if (meters.length) {
+    lines.push(`- ${meters.map((field) => field.label).join(", ")} move at most 10 in one reply unless the scene plainly earns more.`);
+  }
+  lines.push(`- Starting values when there is no previous one${options.perSubject ? " for that person" : ""}: ${seeds}.`);
+  return lines.join(`
+`);
+}
+function buildBondsTemplate(profile) {
+  const fields = statFields(profile, "bonds");
+  if (!fields.length)
+    return "";
+  const line = fields.map(statFieldSpec).join(" | ");
+  return [
+    "[One line per named NPC present in the scene, plus any NPC whose numbers changed this scene. Nobody else.",
+    statRules(fields, "Bonds", { perSubject: true }),
+    "- These are feelings, not bodies. Do not describe clothing, posture or location here.]",
+    "",
+    `[NPC Name]: ${line}`
+  ].filter(Boolean).join(`
+`);
+}
+function buildSheetTemplate(profile) {
+  const fields = statFields(profile, "sheet");
+  if (!fields.length)
+    return "";
+  const inline = fields.filter((field) => !field.ownLine).map(statFieldSpec).join(" | ");
+  const own = fields.filter((field) => field.ownLine).map(statFieldSpec);
+  return [
+    "[{{user}}'s sheet.",
+    statRules(fields, "Character Sheet"),
+    "- Inventory and skills change only when the story changes them. Do not restock or re-equip on your own.]",
+    "",
+    inline,
+    ...own
+  ].filter(Boolean).join(`
+`);
+}
+function blockById(profile, id) {
+  return BLOCK_REGISTRY.find((block) => block.id === id) || (profile.blockStack?.custom || []).find((block) => block.id === id);
+}
+function normalizeBlockBody(content, tag) {
+  let out = String(content || "").replace(/<summary[^>]*>[\s\S]*?<\/summary\s*>/gi, "").replace(/<\/?details[^>]*>/gi, "");
+  if (tag)
+    out = out.replace(new RegExp(`<\\/?${tag}\\b[^>]*>`, "gi"), "");
+  return out.replace(/\n{3,}/g, `
+
+`).trim();
+}
+function activeBlocks(profile) {
+  const stack = profile.blockStack || { order: [], custom: [], overrides: {} };
+  const enabled = (block) => block && (typeof block.requires !== "function" || block.requires(profile));
+  const chosen = (stack.order || []).map((id) => blockById(profile, id)).filter((block) => enabled(block) && !block.system);
+  const system = BLOCK_REGISTRY.filter((block) => block.system && enabled(block));
+  return [...chosen, ...system];
+}
+function buildBlocksEnvelope(profile, dict) {
+  const active = activeBlocks(profile);
+  if (!active.length)
+    return "";
+  const parts = [];
+  for (const block of active) {
+    const def = block;
+    const overrides = profile.blockStack?.overrides || {};
+    if (def.slot) {
+      if (typeof def.slotRequires === "function" && !def.slotRequires(dict))
+        continue;
+      parts.push(def.slot);
+      continue;
+    }
+    let raw;
+    if (overrides[block.id]?.trim())
+      raw = overrides[block.id];
+    else if (typeof def.build === "function")
+      raw = def.build(profile);
+    else if (def.source)
+      raw = dict[def.source] || "";
+    else
+      raw = block.content || "";
+    const body = normalizeBlockBody(String(raw).replace(/^#{1,3}\s*At the end of your response[^\n]*\n?/i, ""), block.tag);
+    if (!body)
+      continue;
+    parts.push(`<${block.tag}>
+${body}
+</${block.tag}>`);
+  }
+  if (!parts.length)
+    return "";
+  const header = [
+    "## At the end of your response, output exactly one <Blocks> section.",
+    "Put every block inside it, in this order, each in its own tag. Do not add tags that are not listed. Do not nest blocks inside each other. Close every tag you open. Never wrap a block in <details> or <summary> \u2014 the interface draws the header and the fold itself."
+  ].join(`
+`);
+  return `${header}
+
+<Blocks>
+${parts.join(`
+`)}
+</Blocks>`;
+}
+var COMPACT_WORLD_STATE = `Omit deep lore, unresolved threads, and off-screen tracking. Focus ONLY on immediate physical presence:
+<World_State>
+**Time & Loc:** [Time] at [Location]
+**PC:** [Brief visible clothing] | [Current posture/position]
+**NPCs Present:**
+* [Name]: [Brief visible clothing] | [Posture/position]
+</World_State>`;
+
+// src/story-config.ts
+var CONFIG_PREAMBLE = `These are standing settings for this story. Where a setting here contradicts anything above, this block wins. These apply to the whole story, not a single scene.`;
+var storyConfigFields = [
+  {
+    key: "genre",
+    tag: "genre",
+    label: "Genre",
+    icon: "fa-masks-theater",
+    color: "#f59e0b",
+    type: "text",
+    placeholder: "e.g. horror, romance",
+    aiNote: "sets the conventions the story plays straight, never comments on",
+    hint: "The story's genre and the conventions that come with it. Played straight, never commented on.",
+    chips: ["slice of life", "noir", "horror", "romance", "workplace comedy", "political thriller", "survival", "dark fantasy", "sci-fi", "mystery", "adventure", "tragedy"]
+  },
+  {
+    key: "culture",
+    tag: "culture",
+    label: "Culture & Setting",
+    icon: "fa-globe",
+    color: "#22c55e",
+    type: "text",
+    placeholder: "e.g. Japanese, Western",
+    aiNote: "the cultural world \u2014 names, honorifics, food, manners, idiom",
+    hint: "The cultural world the story runs on \u2014 names, honorifics, food, manners, social rules and the idiom people speak in. Works with era to place the story.",
+    chips: [
+      "Japanese",
+      "Korean",
+      "Chinese",
+      "wuxia / xianxia",
+      "Southeast Asian",
+      "Indian",
+      "Middle Eastern",
+      "North African",
+      "West African",
+      "Latin American",
+      "Brazilian",
+      "American",
+      "Wild West frontier",
+      "British",
+      "Irish",
+      "French",
+      "Italian",
+      "Mediterranean",
+      "Nordic",
+      "Slavic",
+      "Greco-Roman",
+      "high fantasy European",
+      "steampunk Victorian",
+      "cyberpunk East Asian",
+      "post-Soviet"
+    ]
+  },
+  {
+    key: "era",
+    tag: "era",
+    label: "Era",
+    icon: "fa-hourglass-half",
+    color: "#d97706",
+    type: "text",
+    placeholder: "e.g. 1980s",
+    aiNote: "the period the world runs on",
+    hint: "The year or period the world runs on.",
+    chips: ["ancient", "medieval", "renaissance", "victorian", "1920s", "1950s", "1970s", "1980s", "1990s", "present day", "near future", "far future", "post-apocalyptic"]
+  },
+  {
+    key: "pov",
+    tag: "pov",
+    label: "Point of View",
+    icon: "fa-eye",
+    color: "#3b82f6",
+    type: "select",
+    hint: "Narrative person and where the camera sits. Never loosens the {{user}} boundary.",
+    customPlaceholder: "e.g. third limited, sitting behind Maya's eyes",
+    options: [
+      "second person on {{user}}",
+      "third limited",
+      "third limited following one NPC",
+      "third omniscient",
+      "first person",
+      "roving"
+    ]
+  },
+  {
+    key: "focus",
+    tag: "focus",
+    label: "Focus",
+    icon: "fa-crosshairs",
+    color: "#eab308",
+    type: "text",
+    placeholder: "e.g. the camera follows Maya",
+    aiNote: "whose story the camera favours",
+    hint: "Whose story this is, if the camera should favour someone other than {{user}}. Name them.",
+    chips: []
+  },
+  {
+    key: "tone",
+    tag: "narration tone",
+    label: "Narration Tone",
+    icon: "fa-cloud-sun-rain",
+    color: "#a855f7",
+    type: "text",
+    placeholder: "e.g. bleak, absurd",
+    aiNote: "the emotional weather over everything; overrides the default register",
+    hint: "The mood that sits over the whole story, whatever is happening in a given scene.",
+    chips: ["warm", "bleak", "absurd", "tense", "melancholy", "playful", "dreamlike", "clinical", "wistful", "manic"]
+  },
+  {
+    key: "narratorPresence",
+    tag: "narrator_presence",
+    label: "Narrator Presence",
+    icon: "fa-comment-dots",
+    color: "#14b8a6",
+    type: "select",
+    aiNote: "how visible the narrator's attitude is",
+    customPlaceholder: "e.g. heavy. comment on everything",
+    hint: "How visible the narrator's attitude is. Light is your preset default.",
+    defaultLabel: "light",
+    defaultAliases: ["light", "light (one beat per response)", "light (default: one beat per response)"],
+    options: [
+      "invisible (report only, no coloring)",
+      "heavy (commentary throughout)"
+    ]
+  },
+  {
+    key: "npcSpeechStyle",
+    tag: "npc_speech_style",
+    label: "NPC Speech Style",
+    icon: "fa-quote-left",
+    color: "#0ea5e9",
+    type: "text",
+    placeholder: "e.g. 1980s poetic",
+    aiNote: "how NPCs sound when they speak",
+    hint: "Override how the NPCs sound.",
+    chips: ["medieval poetic", "shakespearean", "victorian formal", "1920s slang", "1970s street", "1980s poetic", "modern casual", "corporate", "military clipped", "rural drawl", "cyberpunk street", "archaic high fantasy"]
+  },
+  {
+    key: "npcDisposition",
+    tag: "npc_disposition",
+    label: "NPC Disposition",
+    icon: "fa-users",
+    color: "#8b5cf6",
+    type: "select",
+    aiNote: "the cast's starting stance toward {{user}}; individuals still move based on what they actually do",
+    customPlaceholder: "e.g. cold. the NPCs don't like {{user}}",
+    hint: "How the cast feels about {{user}} before they earn anything else. Ordinary is your preset default.",
+    defaultLabel: "ordinary",
+    defaultAliases: ["ordinary"],
+    options: [
+      "warm",
+      "wary",
+      "cold",
+      "hostile"
+    ]
+  },
+  {
+    key: "difficulty",
+    tag: "difficulty",
+    label: "Difficulty",
+    icon: "fa-mountain",
+    color: "#ef4444",
+    type: "select",
+    aiNote: "how hard the world pushes back on what {{user}} attempts",
+    customPlaceholder: "e.g. hard. the world is against {{user}}",
+    hint: "How hard the world pushes back on what {{user}} attempts. Realistic is your preset default.",
+    defaultLabel: "realistic",
+    defaultAliases: ["realistic", "realistic (default)"],
+    options: [
+      "forgiving (most attempts land)",
+      "harsh (competence required, failure common, mistakes carry a real cost)"
+    ]
+  },
+  {
+    key: "friction",
+    tag: "friction",
+    label: "Friction",
+    icon: "fa-bolt",
+    color: "#f97316",
+    type: "select",
+    aiNote: "how often complications arrive",
+    customPlaceholder: "e.g. high. trouble is always around the corner",
+    hint: "How often trouble arrives. Normal is your preset default.",
+    defaultLabel: "normal",
+    defaultAliases: ["normal", "normal (the preset's own curve)"],
+    options: [
+      "low (only ever as earned consequence)",
+      "high (complications every scene, pressure never fully releasing)"
+    ]
+  },
+  {
+    key: "explicitness",
+    tag: "explicitness",
+    label: "Explicitness",
+    icon: "fa-fire",
+    color: "#e11d48",
+    type: "select",
+    aiNote: "how far scenes go and how directly they are written",
+    customPlaceholder: "e.g. graphic. give details",
+    hint: "How far scenes go and how directly they are written.",
+    options: [
+      "fade to black",
+      "plain",
+      "graphic"
+    ]
+  },
+  {
+    key: "pace",
+    tag: "pace",
+    label: "Pace",
+    icon: "fa-gauge-high",
+    color: "#10b981",
+    type: "select",
+    aiNote: "how fast story time moves and how freely scenes skip ahead",
+    customPlaceholder: "e.g. steady, but skip anything that isn't a real beat",
+    hint: "How fast story time moves.",
+    options: [
+      "slow burn",
+      "steady",
+      "fast"
+    ]
+  },
+  {
+    key: "length",
+    tag: "length",
+    label: "Length",
+    icon: "fa-ruler-horizontal",
+    color: "#06b6d4",
+    type: "select",
+    aiNote: "target size of each response",
+    customPlaceholder: "e.g. around 300 words, longer when a scene earns it",
+    hint: "How long each reply should run.",
+    options: [
+      { label: "flexible", value: "flexible \u2014 as short as 50 words for a quick one-on-one exchange, up to 700 when a scene earns the space. Match the length to what the moment actually needs; never pad to reach a number" },
+      "250\u2013350 words",
+      "450\u2013550 words",
+      "minimum 900 words"
+    ]
+  },
+  {
+    key: "notes",
+    tag: "notes",
+    label: "Notes",
+    icon: "fa-note-sticky",
+    color: "#94a3b8",
+    type: "textarea",
+    placeholder: "e.g. never let Maya win",
+    aiNote: "standing instruction, applies to the whole story",
+    hint: "Any standing instruction that doesn't fit a field above."
+  }
+];
+function normalizeStoryConfig(cfg) {
+  if (!cfg)
+    return cfg;
+  for (const field of storyConfigFields) {
+    if (!field.defaultAliases)
+      continue;
+    const value = String(cfg[field.key] || "").trim().toLowerCase();
+    if (value && field.defaultAliases.some((alias) => alias.toLowerCase() === value))
+      cfg[field.key] = "";
+  }
+  return cfg;
+}
+function buildConfigBlock(cfg) {
+  if (!cfg || !cfg.enabled)
+    return "";
+  normalizeStoryConfig(cfg);
+  const lines = [];
+  for (const field of storyConfigFields) {
+    const raw = cfg[field.key];
+    if (!raw || String(raw).trim() === "")
+      continue;
+    const note = field.aiNote ? ` *${field.aiNote}*` : "";
+    lines.push(`- ${field.tag}: ${String(raw).trim()}${note}`);
+  }
+  if (lines.length === 0)
+    return "";
+  return ["<config>", CONFIG_PREAMBLE, "", ...lines, "</config>"].join(`
+`);
 }
 
 // src/megumin-data.js
@@ -4295,7 +4845,9 @@ var UNUSED_PLACEHOLDERS = [
   "[[v9_lean_min]]",
   "[[v9_lean_max]]",
   "[[v9_full_min]]",
-  "[[v9_full_max]]"
+  "[[v9_full_max]]",
+  "[[config]]",
+  "[[blocks]]"
 ];
 function featureSpec(id, label, hooks) {
   return {
@@ -4366,6 +4918,8 @@ var REQUIRED_PLACEHOLDER_FEATURES = [
     { label: "long memory hook", aliases: ["[[long-Memory]]"] },
     { label: "short memory hook", aliases: ["[[Short-memory]]"] }
   ]),
+  featureSpec("story-config", "Story Config", [{ label: "config block hook", aliases: ["[[config]]"] }]),
+  featureSpec("blocks-envelope", "Response Blocks Envelope", [{ label: "blocks envelope hook", aliases: ["[[blocks]]"] }]),
   featureSpec("dynamic-ban-list", "Dynamic Ban List", [{ label: "ban list hook", aliases: ["[[banlist]]"] }]),
   featureSpec("dialogue-narration", "Dialogue / Narration Ratio", [{ label: "D/N ratio hook", aliases: ["[[DNRATIO]]"] }])
 ];
@@ -4403,7 +4957,14 @@ function engineFamily(engine) {
   };
 }
 var V7_DIRECTOR_STYLES = new Set(["dir_v7", "dir_v7_core", "dir_v7_gentle"]);
-function buildBaseDict(profile, customEngines, chatMessages, context) {
+function presetUsesEnvelope(incoming) {
+  return incoming.some((message) => {
+    if (typeof message.content === "string")
+      return message.content.includes("[[blocks]]");
+    return message.content.some((part) => part.type === "text" && part.text.includes("[[blocks]]"));
+  });
+}
+function buildBaseDict(profile, customEngines, chatMessages, context, usesEnvelope = false) {
   const dict = {};
   const activeEngine = selectedEngine(profile, customEngines);
   const allModes = allEngines(customEngines);
@@ -4420,6 +4981,7 @@ ALL OUTPUT EXCEPT THINKING MUST BE IN ${targetLang} ONLY.`;
   dict.v9_full_max = isV9 ? String(limits.fullMax || 1200) : "";
   const wordCountStr = isV9 ? "" : profile.userWordCount.trim() || "";
   dict.count = wordCountStr ? `\u2014 maximum ${wordCountStr} words` : "";
+  dict.config = buildConfigBlock(profile.storyConfig);
   const personality = logic.personalities.find((item) => item.id === profile.personality);
   dict.main = personality?.content || "";
   dict.AI1 = profile.personality === "megumin" ? "Fine i read the rules." : "Understood.";
@@ -4633,6 +5195,32 @@ Extra: ${profile.imageGen.promptExtra}` : ""}`;
         dict[key] = dict[key].split(marker).join(value);
     }
   }
+  if (profile.blocks.includes("info") && dict.infoblock && profile.worldState?.compactEnabled) {
+    const frequency = Math.max(1, profile.worldState.fullFreq || 5);
+    if ((aiMessageCount + 1) % frequency !== 0)
+      dict.infoblock = COMPACT_WORLD_STATE;
+  }
+  for (const key of ["infoblock", "npc_inner_chatter", "cyoa", "storytracker"]) {
+    if (dict[key]?.trim()) {
+      dict[key] = dict[key].replace(/# at the very end of the response put this block:\s*/gi, "");
+    }
+  }
+  dict.blocks = buildBlocksEnvelope(profile, dict);
+  if (usesEnvelope && dict.blocks.trim()) {
+    const owned = [
+      "infoblock",
+      "infoblock2",
+      "cyoa",
+      "cyoa2",
+      "npc_inner_chatter",
+      "npc_inner_chatter2",
+      "storytracker",
+      "storytracker2",
+      "npcDossierSlot"
+    ];
+    for (const key of owned)
+      dict[key] = "";
+  }
   for (const key of Object.keys(dict))
     dict[key] = normalizeMacroTargets(dict[key], context);
   return dict;
@@ -4655,9 +5243,9 @@ function placeholderMapFromDict(dict) {
   set("[[npc_dossier2]]", dict.npcDossierSlot);
   return map;
 }
-function buildMeguminReplacementMap(rawProfile, customEngines, chatMessages, context) {
+function buildMeguminReplacementMap(rawProfile, customEngines, chatMessages, context, usesEnvelope = false) {
   const profile = hydrateProfile(rawProfile || DEFAULT_PROFILE);
-  return placeholderMapFromDict(buildBaseDict(profile, customEngines, chatMessages, context));
+  return placeholderMapFromDict(buildBaseDict(profile, customEngines, chatMessages, context, usesEnvelope));
 }
 function estimateMeguminPayloadTokens(rawProfile, customEngines, chatMessages, context, presentPlaceholders) {
   const replacements = buildMeguminReplacementMap(rawProfile, customEngines, chatMessages, context);
@@ -4702,7 +5290,7 @@ function replacePlaceholderText(content, replacements) {
 }
 function replaceMeguminPlaceholders(incoming, rawProfile, customEngines, chatMessages, context) {
   const profile = hydrateProfile(rawProfile || DEFAULT_PROFILE);
-  const replacements = placeholderMapFromDict(buildBaseDict(profile, customEngines, chatMessages, context));
+  const replacements = placeholderMapFromDict(buildBaseDict(profile, customEngines, chatMessages, context, presetUsesEnvelope(incoming)));
   let replacementsMade = 0;
   const changedMessages = [];
   const messages = incoming.map((message, messageIndex) => {
@@ -4912,6 +5500,12 @@ var SYNCABLE_PROFILE_KEYS = new Set([
   "onomatopoeia",
   "addons",
   "blocks",
+  "v9Limits",
+  "storyConfig",
+  "configPresets",
+  "blockStack",
+  "statBlocks",
+  "worldState",
   "model",
   "thinkEffort",
   "customThinkEffort",
@@ -4929,7 +5523,8 @@ var MEGUMIN_PRESET_TARGETS = {
   engine: { name: "Megumin Engine", stateKey: "enginePresetId" },
   image: { name: "Megumin Image", stateKey: "imagePresetId" },
   "suite-ds4": { name: "Megumin Suite V7 DS4", stateKey: "suiteDs4PresetId" },
-  "suite-gemini": { name: "Megumin Suite V7 Gemini", stateKey: "suiteGeminiPresetId" }
+  "suite-gemini": { name: "Megumin Suite V7 Gemini", stateKey: "suiteGeminiPresetId" },
+  "suite-v91": { name: "Megumin Suite V9.1 Universal", stateKey: "suiteV91PresetId" }
 };
 var UTILITY_TRIGGERS = {
   storyPlan: "___PS_STORY_PLAN___",
@@ -5045,6 +5640,7 @@ async function presetContractAudit(profile, customEngines, chatMessages, context
   const scannedPresetNames = [];
   if (available) {
     const presets = await Promise.all([
+      findMeguminPreset("suite-v91", userId).catch(() => null),
       findMeguminPreset("suite-ds4", userId).catch(() => null),
       findMeguminPreset("suite-gemini", userId).catch(() => null)
     ]);
@@ -5075,7 +5671,7 @@ async function presetContractAudit(profile, customEngines, chatMessages, context
   const canEvaluateHooks = hasScannedPreset && hasDetectedHooks;
   const features = auditPresetPlaceholders(presentPlaceholders, canEvaluateHooks);
   const estimateSet = hasDetectedHooks ? presentPlaceholders : undefined;
-  const statusMessage = !available ? "Lumiverse preset access is unavailable." : !hasScannedPreset ? "Uploaded Megumin Suite V7 preset not detected. Import the Megumin Suite preset in Lumiverse, then refresh Megumin Suite." : !hasDetectedHooks ? "Megumin Suite preset was found, but no Megumin placeholder hooks were detected in its prompt blocks." : undefined;
+  const statusMessage = !available ? "Lumiverse preset access is unavailable." : !hasScannedPreset ? "Uploaded Megumin Suite preset not detected. Import a Megumin Suite preset (V9.1 Universal is the current one) in Lumiverse, then refresh Megumin Suite." : !hasDetectedHooks ? "Megumin Suite preset was found, but no Megumin placeholder hooks were detected in its prompt blocks." : undefined;
   return {
     available,
     scannedPresetIds,

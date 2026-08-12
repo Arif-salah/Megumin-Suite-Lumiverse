@@ -5,6 +5,10 @@ import {
   faAddressBook,
   faAlignLeft,
   faArrowLeft,
+  faArrowDown,
+  faArrowUp,
+  faCompress,
+  faListOl,
   faArrowsRotate,
   faBan,
   faBolt,
@@ -95,6 +99,15 @@ import {
 import type { EngineMode, MeguminProfile, RpcResponse } from "./types";
 import { DEFAULT_PROFILE, clone, mergeProfile } from "./defaults";
 import { KAZUMA_PLACEHOLDERS, RESOLUTIONS } from "./image-data";
+import type { StoryConfigField } from "./story-config";
+import {
+  allConfigPresets,
+  configOptionLabel,
+  configOptionValue,
+  countActiveConfigFields,
+  storyConfigFields
+} from "./story-config";
+import { BLOCK_REGISTRY, arrangeableBlocks, blockById } from "./blocks";
 
 type Ctx = SpindleFrontendContext & Record<string, any>;
 
@@ -183,6 +196,7 @@ const tabs = [
   { title: "Core Engine", sub: "Choose the core ruleset that drives all NPC behavior and world logic.", short: "Engine", icon: "fa-server", color: "#f59e0b", render: renderEngines },
   { title: "Persona & Toggles", sub: "Define the personality and extra toggles.", short: "Persona", icon: "fa-user-astronaut", color: "#ec4899", render: renderPersona },
   { title: "Writing Style", sub: "Apply a prebuilt style, generate one with AI, or build your own.", short: "Style", icon: "fa-pen-nib", color: "#a855f7", render: renderStyle },
+  { title: "Story Config", sub: "Standing settings for this story. Genre, tone, pacing, difficulty.", short: "Config", icon: "fa-sliders", color: "#eab308", render: renderStoryConfig },
   { title: "Global Settings", sub: "Set response length, output language, and how the AI addresses you.", short: "Global", icon: "fa-earth-americas", color: "#3b82f6", render: renderGlobalSettings },
   { title: "Add-ons & Blocks", sub: "Attach extra modules that appear at the end of every response.", short: "Blocks", icon: "fa-puzzle-piece", color: "#10b981", render: renderBlocks },
   { title: "Chain of Thought", sub: "Control the AI's internal reasoning process before it writes.", short: "Thinking", icon: "fa-brain", color: "#8b5cf6", render: renderThinking },
@@ -483,6 +497,17 @@ function wire(container: HTMLElement) {
   });
   container.querySelectorAll<HTMLElement>("[data-action]").forEach((el) => {
     el.addEventListener("click", () => handleAction(el));
+  });
+  // Story Config selects carry a "Custom…" escape hatch, so they cannot just bind:
+  // picking it has to clear the value and re-render into a free-text input rather
+  // than storing the sentinel.
+  container.querySelectorAll<HTMLSelectElement>("select[data-action=\"config-select\"]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const path = select.dataset.path!;
+      setPath(state.profile as any, path, select.value === "__custom__" ? " " : select.value);
+      saveProfileSoon();
+      render();
+    });
   });
   container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[data-bind]").forEach((input) => {
     input.addEventListener("change", () => {
@@ -916,6 +941,110 @@ async function handleAction(el: HTMLElement) {
       render();
       return;
     }
+    if (action === "config-preset") {
+      const preset = allConfigPresets(state.profile.configPresets || []).find((item) => item.id === el.dataset.value);
+      if (!preset) return;
+      if (!confirm(`Load "${preset.name}"? This overwrites every Story Config field.`)) return;
+      // Start from a clean slate so a field the preset leaves out goes back to
+      // Default rather than keeping a stale value from whatever was there before.
+      const cleared: Record<string, string | boolean> = { enabled: true };
+      for (const field of storyConfigFields) cleared[field.key] = "";
+      state.profile.storyConfig = { ...cleared, ...preset.values, enabled: true } as any;
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bstack-toggle") {
+      const id = el.dataset.id || el.dataset.value || "";
+      const order = state.profile.blockStack.order;
+      const at = order.indexOf(id);
+      if (at >= 0) order.splice(at, 1);
+      else {
+        // Choices is the one block the reader acts on, so it opens the strip
+        // unless they move it themselves.
+        const def = blockById(state.profile, id) as any;
+        if (def?.preferFirst) order.unshift(id);
+        else order.push(id);
+      }
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bstack-move") {
+      const id = el.dataset.id || "";
+      const direction = Number(el.dataset.dir || 0);
+      const order = state.profile.blockStack.order;
+      const at = order.indexOf(id);
+      const to = at + direction;
+      if (at < 0 || to < 0 || to >= order.length) return;
+      order.splice(to, 0, ...order.splice(at, 1));
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bcustom-new") {
+      const name = prompt("Name for the custom block:");
+      if (!name || !name.trim()) return;
+      // The tag is what the model actually writes, so it has to be a legal XML
+      // name rather than whatever the reader typed.
+      const tag = name.trim().replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "Custom_Block";
+      const taken = new Set([...BLOCK_REGISTRY.map((b) => b.tag.toLowerCase()), ...state.profile.blockStack.custom.map((b) => b.tag.toLowerCase())]);
+      if (taken.has(tag.toLowerCase())) {
+        alert(`A block already uses the tag <${tag}>. Pick another name.`);
+        return;
+      }
+      state.profile.blockStack.custom.push({
+        id: `custom_${Date.now().toString(36)}`,
+        name: name.trim(),
+        tag,
+        content: ""
+      });
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bcustom-delete") {
+      const id = el.dataset.id || "";
+      const custom = state.profile.blockStack.custom;
+      const at = custom.findIndex((item) => item.id === id);
+      if (at < 0) return;
+      if (!confirm(`Delete "${custom[at].name}"?`)) return;
+      custom.splice(at, 1);
+      // A deleted block must leave the stack too, or the envelope would look up an
+      // id that no longer resolves.
+      const order = state.profile.blockStack.order;
+      const inOrder = order.indexOf(id);
+      if (inOrder >= 0) order.splice(inOrder, 1);
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bfield-add") {
+      const blockId = el.dataset.block || "";
+      const label = prompt("Field label (e.g. Jealousy):");
+      if (!label || !label.trim()) return;
+      const target = state.profile.statBlocks[blockId] || (state.profile.statBlocks[blockId] = { fields: [] });
+      target.fields.push({
+        id: label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+        label: label.trim(),
+        type: "meter",
+        max: 100,
+        start: 0
+      });
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "bfield-delete") {
+      const blockId = el.dataset.block || "";
+      const index = Number(el.dataset.index || -1);
+      const fields = state.profile.statBlocks[blockId]?.fields;
+      if (!fields || index < 0 || index >= fields.length) return;
+      fields.splice(index, 1);
+      saveProfileSoon();
+      render();
+      return;
+    }
     if (action === "select-engine") {
       const engineId = el.dataset.value || "";
       state.profile.mode = engineId;
@@ -1310,19 +1439,204 @@ function renderGlobalSettings(): string {
     </div>`;
 }
 
+/**
+ * Story Config: the standing settings for a story, compiled into <config>.
+ *
+ * Every field is optional and every field defaults to blank, which means "leave it
+ * to the engine". A blank field emits no line at all, so the block only ever
+ * carries what the reader actually decided.
+ */
+function renderStoryConfig(): string {
+  const cfg = state.profile.storyConfig;
+  const active = countActiveConfigFields(cfg);
+  const presets = allConfigPresets(state.profile.configPresets || []);
+
+  const fieldRow = (field: StoryConfigField): string => {
+    const value = String(cfg[field.key] || "");
+    const path = `storyConfig.${field.key}`;
+
+    if (field.type === "textarea") {
+      return `
+        <div class="cfg-field">
+          <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span></div>
+          <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
+          <textarea class="ps-modern-input textarea-sm" data-bind="${path}" placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(value)}</textarea>
+        </div>`;
+    }
+
+    if (field.type === "select") {
+      const options = field.options || [];
+      const values = options.map(configOptionValue);
+      const isCustom = Boolean(value) && !values.includes(value);
+      return `
+        <div class="cfg-field">
+          <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span>${value ? `<button class="cfg-clear" type="button" data-action="select" data-path="${path}" data-value="" title="Back to Default">${icon("fa-rotate-left")}</button>` : ""}</div>
+          <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
+          <select class="ps-modern-input" data-action="config-select" data-path="${path}">
+            <option value="" ${!value ? "selected" : ""}>Default${field.defaultLabel ? ` (${escapeHtml(field.defaultLabel)})` : ""}</option>
+            ${options.map((option) => {
+              const optionValue = configOptionValue(option);
+              return `<option value="${escapeHtml(optionValue)}" ${value === optionValue ? "selected" : ""}>${escapeHtml(configOptionLabel(option))}</option>`;
+            }).join("")}
+            <option value="__custom__" ${isCustom ? "selected" : ""}>Custom…</option>
+          </select>
+          ${isCustom ? `<input type="text" class="ps-modern-input" style="margin-top:8px;" data-bind="${path}" value="${escapeHtml(value.trim())}" placeholder="${escapeHtml(field.customPlaceholder || "")}" />` : ""}
+        </div>`;
+    }
+
+    return `
+      <div class="cfg-field">
+        <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span>${value ? `<button class="cfg-clear" type="button" data-action="select" data-path="${path}" data-value="" title="Back to Default">${icon("fa-rotate-left")}</button>` : ""}</div>
+        <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
+        <input type="text" class="ps-modern-input" data-bind="${path}" value="${escapeHtml(value)}" placeholder="${escapeHtml(field.placeholder || "")}" />
+        ${(field.chips || []).length ? `<div class="cfg-chips">${(field.chips || []).map((chip) => `<button type="button" class="cfg-chip ${value === chip ? "active" : ""}" data-action="select" data-path="${path}" data-value="${escapeHtml(chip)}">${escapeHtml(chip)}</button>`).join("")}</div>` : ""}
+      </div>`;
+  };
+
+  return `
+    ${tabHeader("Story Config", "Standing settings for this story. These override anything above them.", "fa-sliders", "#eab308", cfg.enabled ? `${active} Active` : "Disabled", cfg.enabled ? "#10b981" : "#a1a1aa", cfg.enabled ? "fa-circle-check" : "fa-circle-xmark")}
+    ${presetFeatureWarning(["story-config"])}
+    <div id="cfg_enable_card" class="mtab-toggle-row ${cfg.enabled ? "active" : ""}" data-action="toggle" data-path="storyConfig.enabled" style="margin-bottom: 20px;">
+      <div class="toggle-info"><div class="toggle-label">${icon("fa-sliders")} Enable Story Config</div><div class="toggle-desc">Injects a &lt;config&gt; block that wins over anything earlier in the prompt. Requires a preset with the [[config]] hook.</div></div>
+      <div class="ps-switch"></div>
+    </div>
+    <div id="cfg_main_content" style="display:${cfg.enabled ? "block" : "none"};">
+      <div class="mtab-panel">
+        <div class="mtab-panel-title gold">${icon("fa-wand-magic-sparkles")} Starter Presets</div>
+        <div class="mtab-callout">${icon("fa-circle-info")}<span>Loading a preset overwrites every field below. Your own values are not kept.</span></div>
+        <div class="mtab-card-grid compact">
+          ${presets.map((preset) => infoCard({
+            title: preset.name,
+            sub: preset.builtin ? "Built-in" : "Saved",
+            active: false,
+            action: "config-preset",
+            value: preset.id
+          })).join("")}
+        </div>
+      </div>
+      <div class="cfg-grid">
+        ${storyConfigFields.map(fieldRow).join("")}
+      </div>
+      <div class="mtab-callout gold" style="margin-top:16px;">${icon("fa-triangle-exclamation")}<span><strong>Blank means Default.</strong> A blank field emits no line at all, so the engine keeps its own judgement for it.</span></div>
+    </div>`;
+}
+
 function renderBlocks(): string {
   const blocks = state.logic?.blocks || [];
   const activeMode = state.engines.find((engine) => engine.id === state.profile.mode) as any;
   const customAddons = Array.isArray(activeMode?.customToggles)
     ? activeMode.customToggles.filter((item: any) => item.location === "addons")
     : [];
+  const stack = state.profile.blockStack;
+  const ws = state.profile.worldState;
+  const inStack = (id: string) => stack.order.includes(id);
+
+  // A block the reader can arrange, drawn as one row of the stack strip.
+  const stackRow = (id: string, index: number): string => {
+    const def = blockById(state.profile, id) as any;
+    if (!def) return "";
+    return `
+      <div class="bstack-row">
+        <div class="bstack-grip">${escapeHtml(def.emoji || "🔹")}</div>
+        <div class="bstack-name">
+          <div class="bstack-title" style="color:${def.color || "var(--gold)"}">${escapeHtml(def.label || def.name || id)}</div>
+          <div class="bstack-tag">&lt;${escapeHtml(def.tag)}&gt;</div>
+        </div>
+        <div class="bstack-actions">
+          <button type="button" class="ps-modern-btn secondary" title="Move up" data-action="bstack-move" data-id="${escapeHtml(id)}" data-dir="-1" ${index === 0 ? "disabled" : ""}>${icon("fa-arrow-up")}</button>
+          <button type="button" class="ps-modern-btn secondary" title="Move down" data-action="bstack-move" data-id="${escapeHtml(id)}" data-dir="1" ${index === stack.order.length - 1 ? "disabled" : ""}>${icon("fa-arrow-down")}</button>
+          <button type="button" class="ps-modern-btn secondary danger" title="Remove from stack" data-action="bstack-toggle" data-id="${escapeHtml(id)}">${icon("fa-xmark")}</button>
+        </div>
+      </div>`;
+  };
+
+  const statEditor = (blockId: string, label: string): string => {
+    const fields = state.profile.statBlocks?.[blockId]?.fields || [];
+    return `
+      <div class="mtab-panel">
+        <div class="panel-heading-row">
+          <div class="mtab-panel-title gold">${icon("fa-sliders")} ${escapeHtml(label)} Fields</div>
+          <button class="wstyle-gen-btn" type="button" data-action="bfield-add" data-block="${escapeHtml(blockId)}">${icon("fa-plus")} Add Field</button>
+        </div>
+        <div class="mtab-callout">${icon("fa-circle-info")}<span>The template the model is asked for is generated from this list, so adding a field changes the prompt.</span></div>
+        ${fields.length ? fields.map((field, index) => `
+          <div class="bfield-row">
+            <input type="text" class="ps-modern-input" style="flex:2;" data-bind="statBlocks.${blockId}.fields.${index}.label" value="${escapeHtml(field.label)}" placeholder="Label" />
+            <select class="ps-modern-input" style="flex:1;" data-bind="statBlocks.${blockId}.fields.${index}.type">
+              ${["text", "meter", "number", "list"].map((type) => `<option value="${type}" ${field.type === type ? "selected" : ""}>${type}</option>`).join("")}
+            </select>
+            ${field.type === "meter" || field.type === "number"
+              ? `<input type="number" class="ps-modern-input" style="width:80px;" data-bind="statBlocks.${blockId}.fields.${index}.start" value="${field.start ?? 0}" title="Starting value" />`
+              : `<input type="text" class="ps-modern-input" style="flex:1;" data-bind="statBlocks.${blockId}.fields.${index}.hint" value="${escapeHtml(field.hint || "")}" placeholder="hint" />`}
+            <button type="button" class="ps-modern-btn secondary danger" title="Delete field" data-action="bfield-delete" data-block="${escapeHtml(blockId)}" data-index="${index}">${icon("fa-trash")}</button>
+          </div>`).join("")
+          : `<div class="dev-empty">No fields. This block emits nothing until it has at least one.</div>`}
+      </div>`;
+  };
+
   return `
     ${tabHeader("Response Blocks", "Attach extra UI panels to every AI response.", "fa-cubes", "#10b981", `${state.profile.blocks.length} Active`, "#10b981", "fa-cubes")}
     ${presetFeatureWarning(["response-blocks"])}
     <div class="mtab-card-grid">
       ${blocks.map((item: any) => moduleCard(item, state.profile.blocks.includes(item.id), "blocks", !!(activeMode && typeof activeMode[item.id] === "string" && activeMode[item.id].trim()))).join("")}
       ${customAddons.length ? `<div style="grid-column: 1 / -1;"><div class="wstyle-section-head green" style="margin:8px 0;">${icon("fa-puzzle-piece")} Custom Engine Add-ons</div></div>${customAddons.map((item: any) => infoCard({ title: item.name, sub: `Custom Module -> [[${item.attachPoint}]]`, active: !!state.profile.toggles[item.id], action: "toggle", path: `toggles.${item.id}` })).join("")}` : ""}
-    </div>`;
+    </div>
+
+    <div class="wstyle-section-head green" style="margin-top:24px;">${icon("fa-layer-group")} Blocks Envelope</div>
+    ${presetFeatureWarning(["blocks-envelope"])}
+    <div class="mtab-callout gold">${icon("fa-circle-info")}<span><strong>The stack is membership and order both.</strong> A block that is not in the stack is never emitted. An empty stack falls back to the legacy per-block hooks, so V7 presets keep working.</span></div>
+
+    <div class="mtab-panel">
+      <div class="mtab-panel-title gold">${icon("fa-list-ol")} Emission Order</div>
+      ${stack.order.length
+        ? `<div class="bstack-list">${stack.order.map(stackRow).join("")}</div>`
+        : `<div class="dev-empty">Nothing in the stack. Add a block below.</div>`}
+    </div>
+
+    <div class="mtab-panel">
+      <div class="panel-heading-row">
+        <div class="mtab-panel-title gold">${icon("fa-plus")} Available Blocks</div>
+        <button class="wstyle-gen-btn" type="button" data-action="bcustom-new">${icon("fa-code")} New Custom Block</button>
+      </div>
+      <div class="mtab-card-grid compact">
+        ${arrangeableBlocks().filter((def) => !inStack(def.id)).map((def) => infoCard({
+          title: `${def.emoji || ""} ${def.label}`,
+          sub: `<${def.tag}>`,
+          active: false,
+          action: "bstack-toggle",
+          value: def.id
+        })).join("")}
+        ${(stack.custom || []).filter((def) => !inStack(def.id)).map((def) => infoCard({
+          title: def.name,
+          sub: `<${def.tag}> — custom`,
+          active: false,
+          action: "bstack-toggle",
+          value: def.id
+        })).join("")}
+      </div>
+      ${(stack.custom || []).length ? `
+        <div class="wstyle-section-head purple" style="margin-top:16px;">${icon("fa-code")} Your Custom Blocks</div>
+        ${stack.custom.map((def) => `
+          <div class="bfield-row">
+            <input type="text" class="ps-modern-input" style="flex:1;" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.name" value="${escapeHtml(def.name)}" placeholder="Name" />
+            <input type="text" class="ps-modern-input" style="flex:1;" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.tag" value="${escapeHtml(def.tag)}" placeholder="Tag" />
+            <button type="button" class="ps-modern-btn secondary danger" data-action="bcustom-delete" data-id="${escapeHtml(def.id)}">${icon("fa-trash")}</button>
+          </div>
+          <textarea class="ps-modern-input textarea-sm" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.content" placeholder="What the model should put inside this tag.">${escapeHtml(def.content)}</textarea>`).join("")}` : ""}
+    </div>
+
+    ${state.profile.blocks.includes("info") ? `
+    <div class="mtab-panel">
+      <div class="mtab-panel-title gold">${icon("fa-compress")} Compact World State</div>
+      <div id="ws_compact_card" class="mtab-toggle-row ${ws.compactEnabled ? "active" : ""}" data-action="toggle" data-path="worldState.compactEnabled">
+        <div class="toggle-info"><div class="toggle-label">${icon("fa-compress")} Compact Mode</div><div class="toggle-desc">Emit a short World State most turns and the full one every Nth reply. Cuts the running cost of the block without letting it go stale.</div></div>
+        <div class="ps-switch"></div>
+      </div>
+      ${ws.compactEnabled ? `<div class="mtab-setting-row">${settingText("Full Block Every", "Replies between full World State blocks.")}<input type="number" class="ps-modern-input" style="width:110px;" data-bind="worldState.fullFreq" value="${ws.fullFreq}" min="2" /></div>` : ""}
+    </div>` : ""}
+
+    ${inStack("bonds") ? statEditor("bonds", "Bonds") : ""}
+    ${inStack("sheet") ? statEditor("sheet", "Character Sheet") : ""}`;
 }
 
 function renderThinking(): string {
@@ -2103,20 +2417,23 @@ function cotLanguages(currentType: string): Array<{ id: string; label: string; r
 
 function activeTabProfileKeys(): string[] {
   if (state.devMode) return ["mode"];
-  const map: Record<number, string[]> = {
-    0: ["mode", "toggles", "activeStyleId", "aiRule"],
-    1: ["personality", "toggles"],
-    2: ["activeStyleId", "aiRule", "customStyles", "dnRatio"],
-    3: ["addons", "userWordCount", "v9Limits", "userLanguage", "userPronouns", "disableUtilityPrefill", "onomatopoeia", "toggles"],
-    4: ["blocks"],
-    5: ["model", "thinkEffort", "customThinkEffort", "thinkingV2"],
-    6: ["storyPlan"],
-    7: ["banList", "banListBackend"],
-    8: ["imageGen"],
-    9: ["npcBank"],
-    10: ["memoryCore"]
+  // Keyed by the tab's short name rather than its index: inserting a tab used to
+  // silently shift every mapping below it onto the wrong panel.
+  const map: Record<string, string[]> = {
+    Engine: ["mode", "toggles", "activeStyleId", "aiRule"],
+    Persona: ["personality", "toggles"],
+    Style: ["activeStyleId", "aiRule", "customStyles", "dnRatio"],
+    Config: ["storyConfig", "configPresets"],
+    Global: ["addons", "userWordCount", "v9Limits", "userLanguage", "userPronouns", "disableUtilityPrefill", "onomatopoeia", "toggles"],
+    Blocks: ["blocks", "blockStack", "statBlocks", "worldState"],
+    Thinking: ["model", "thinkEffort", "customThinkEffort", "thinkingV2"],
+    Story: ["storyPlan"],
+    Ban: ["banList", "banListBackend"],
+    Image: ["imageGen"],
+    NPCs: ["npcBank"],
+    Memory: ["memoryCore"]
   };
-  return map[state.activeTab] || [];
+  return map[tabs[state.activeTab]?.short || ""] || [];
 }
 
 function moduleDesc(id: string): string {
@@ -2251,6 +2568,10 @@ const faLibrary: Record<string, IconDefinition> = {
   faAddressBook,
   faAlignLeft,
   faArrowLeft,
+  faArrowDown,
+  faArrowUp,
+  faCompress,
+  faListOl,
   faArrowsRotate,
   faBan,
   faBolt,
@@ -4635,6 +4956,35 @@ const LUMIVERSE_COMPAT_CSS = String.raw`
 .dev-card-actions .ps-modern-btn { flex:1; padding:6px; font-size:.8rem; }
 .gold-fill { background:var(--gold) !important; color:#000 !important; border-color:var(--gold) !important; }
 .dev-empty { padding:20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-color); border-radius:12px; margin-bottom:30px; }
+
+/* Story Config */
+.cfg-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px; }
+.cfg-field { background:var(--panel-bg); border:1px solid var(--border-color); border-radius:12px; padding:14px; }
+.cfg-field-head { display:flex; align-items:center; gap:8px; font-weight:600; font-size:0.85rem; margin-bottom:4px; }
+.cfg-field-head svg { width:14px; height:14px; }
+.cfg-clear { margin-left:auto; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:2px 4px; border-radius:6px; }
+.cfg-clear:hover { color:var(--gold); background:rgba(255,255,255,0.06); }
+.cfg-hint { font-size:0.7rem; color:var(--text-muted); line-height:1.45; margin-bottom:10px; }
+.cfg-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.cfg-chip { font-size:0.68rem; padding:4px 9px; border-radius:999px; cursor:pointer; transition:0.15s;
+  background:rgba(255,255,255,0.05); border:1px solid var(--border-color); color:var(--text-muted); }
+.cfg-chip:hover { border-color:var(--gold); color:var(--text-main); }
+.cfg-chip.active { background:var(--gold); border-color:var(--gold); color:#000; font-weight:600; }
+
+/* Blocks envelope */
+.bstack-list { display:flex; flex-direction:column; gap:8px; }
+.bstack-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:10px;
+  background:rgba(255,255,255,0.03); border:1px solid var(--border-color); }
+.bstack-grip { font-size:1.1rem; width:24px; text-align:center; flex-shrink:0; }
+.bstack-name { flex:1; min-width:0; }
+.bstack-title { font-weight:600; font-size:0.85rem; }
+.bstack-tag { font-family:'Consolas', monospace; font-size:0.68rem; color:var(--text-muted); }
+.bstack-actions { display:flex; gap:6px; flex-shrink:0; }
+.bstack-actions .ps-modern-btn { padding:6px 9px; }
+.bstack-actions .ps-modern-btn[disabled] { opacity:0.35; cursor:not-allowed; }
+.bfield-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.bfield-row .ps-modern-input { padding:8px 10px; font-size:0.78rem; }
+.textarea-sm { min-height:80px; resize:vertical; font-size:0.78rem; margin-bottom:10px; }
 .dev-editor-toolbar { position:sticky; top:-11px; z-index:10; background:var(--bg-panel); padding:10px 0 15px; margin:-10px 0 20px; display:flex; gap:10px; border-bottom:1px solid var(--border-color); box-shadow:0 10px 15px -10px rgba(0,0,0,.6); }
 .dev-editor-toolbar #dev_mode_name { flex:1; font-weight:800; font-size:1.1rem; border-color:var(--gold); }
 .dev-flow { display:flex; flex-direction:column; }

@@ -444,6 +444,163 @@ describe("Megumin prompt assembly", () => {
     expect(ids.has(DEFAULT_PROFILE.mode)).toBe(true);
   });
 
+  test("Story Config compiles into a <config> block and vanishes when off", () => {
+    const on = clone(DEFAULT_PROFILE);
+    on.storyConfig = { ...on.storyConfig, enabled: true, genre: "noir", tone: "bleak", era: "1950s" };
+    const built = buildPromptMessages([{ role: "system", content: "[[config]]" }], [], on, [], context);
+    const joined = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+
+    expect(joined).toContain("<config>");
+    expect(joined).toContain("- genre: noir");
+    expect(joined).toContain("- era: 1950s");
+    expect(joined).toContain("- narration tone: bleak");
+    expect(joined).not.toContain("[[config]]");
+
+    // Off, or on with every field blank, must leave nothing behind at all.
+    const off = clone(DEFAULT_PROFILE);
+    const empty = buildPromptMessages([{ role: "system", content: "A\n[[config]]\nB" }], [], off, [], context);
+    expect(empty.messages[0].content).toBe("A\nB");
+
+    const enabledButBlank = clone(DEFAULT_PROFILE);
+    enabledButBlank.storyConfig = { ...enabledButBlank.storyConfig, enabled: true };
+    const blank = buildPromptMessages([{ role: "system", content: "A\n[[config]]\nB" }], [], enabledButBlank, [], context);
+    expect(blank.messages[0].content).toBe("A\nB");
+  });
+
+  test("a field set to its own named default is treated as Default and dropped", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    // "ordinary" is npcDisposition's documented default, so it must not emit a line.
+    profile.storyConfig = { ...profile.storyConfig, enabled: true, genre: "noir", npcDisposition: "ordinary" };
+    const built = buildPromptMessages([{ role: "system", content: "[[config]]" }], [], profile, [], context);
+    const joined = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+
+    expect(joined).toContain("- genre: noir");
+    expect(joined).not.toContain("npc_disposition");
+  });
+
+  test("the Blocks envelope wraps the stack in order and blanks the loose anchors", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blocks = ["info", "cyoa"];
+    profile.blockStack.order = ["world", "cyoa", "bonds"];
+
+    const built = buildPromptMessages(
+      [{ role: "system", content: "[[blocks]]" }, { role: "system", content: "LOOSE:[[cyoa]][[infoblock]]" }],
+      [],
+      profile,
+      [],
+      context
+    );
+    const joined = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+
+    expect(joined).toContain("<Blocks>");
+    expect(joined).toContain("</Blocks>");
+    // Stack order is the emitted order.
+    expect(joined.indexOf("<World_State>")).toBeLessThan(joined.indexOf("<CYOA>"));
+    expect(joined.indexOf("<CYOA>")).toBeLessThan(joined.indexOf("<Bonds>"));
+    // Bonds is generated from the stat field list, not from a token.
+    expect(joined).toContain("Affection: [0-100]/100");
+    // The loose anchors are blanked, so that block collapsed to its bare label.
+    const loose = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).find((c) => c.startsWith("LOOSE:"));
+    expect(loose).toBe("LOOSE:");
+  });
+
+  test("an empty block stack leaves legacy per-block anchors working", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blocks = ["info", "cyoa"];
+    // No blockStack.order: V7-era presets must behave exactly as they always did.
+    const built = buildPromptMessages(
+      [{ role: "system", content: "[[blocks]]" }, { role: "system", content: "LOOSE:[[cyoa]]" }],
+      [],
+      profile,
+      [],
+      context
+    );
+    const joined = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+
+    expect(joined).not.toContain("<Blocks>");
+    const loose = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).find((c) => c.startsWith("LOOSE:"));
+    expect(loose).not.toBe("LOOSE:");
+    expect(loose).toContain("[Short suggestion]");
+  });
+
+  test("a legacy preset keeps [[storytracker]] even though system blocks fill the envelope", () => {
+    // Story Tracker is a system block: it joins the envelope whenever the Story
+    // Planner is on, with no block stack involved. A V7 preset has [[storytracker]]
+    // and no [[blocks]], so surrendering the anchor would drop the tracker entirely.
+    const profile = clone(DEFAULT_PROFILE);
+    profile.storyPlan.enabled = true;
+    profile.storyPlan.currentPlan = "The festival hides the archive clue.";
+
+    const built = buildPromptMessages([{ role: "system", content: "T:[[storytracker]]" }], [], profile, [], context);
+    const joined = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+
+    expect(joined).toContain("<Story_Tracker>");
+  });
+
+  test("no block body reaches the model twice when the envelope is active", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blocks = ["info", "cyoa"];
+    profile.blockStack.order = ["cyoa", "world"];
+
+    const built = buildPromptMessages(
+      [{ role: "system", content: "[[blocks]]\n[[cyoa]]\n[[infoblock]]\n[[cyoa2]]\n[[infoblock2]]" }],
+      [],
+      profile,
+      [],
+      context
+    );
+    const joined = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+
+    // A distinctive line from the CYOA template must appear exactly once.
+    expect(joined.split("1. [Short suggestion]").length - 1).toBe(1);
+    expect((joined.match(/<CYOA>/g) || []).length).toBe(1);
+    expect((joined.match(/<World_State>/g) || []).length).toBe(1);
+  });
+
+  test("compact World State replaces the full block off-cadence", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blocks = ["info"];
+    profile.blockStack.order = ["world"];
+    profile.worldState = { compactEnabled: true, fullFreq: 5 };
+
+    const at = (assistantTurns: number) => {
+      const chat: ChatMessage[] = Array.from({ length: assistantTurns }, (_, i) => ({
+        id: String(i),
+        role: "assistant" as const,
+        content: "..."
+      }));
+      const built = buildPromptMessages([{ role: "system", content: "[[blocks]]" }], chat, profile, [], context);
+      return built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+    };
+
+    // Reply 5 (four already sent) is the full one; reply 1 is compact.
+    expect(at(0)).toContain("Omit deep lore");
+    expect(at(4)).not.toContain("Omit deep lore");
+  });
+
+  test("the shipped V9.1 preset resolves with no raw tokens left behind", () => {
+    const preset = JSON.parse(readFileSync(new URL("../Presets/Megumin Suite V9.1 Universal.json", import.meta.url), "utf8")) as {
+      prompts: Array<{ content?: string }>;
+    };
+    const incoming: LlmMessage[] = (preset.prompts || [])
+      .filter((entry) => typeof entry.content === "string" && entry.content.trim())
+      .map((entry) => ({ role: "system", content: entry.content as string }));
+    expect(incoming.length).toBeGreaterThan(5);
+
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blocks = ["info", "cyoa"];
+    profile.blockStack.order = ["cyoa", "world", "bonds"];
+    profile.storyConfig = { ...profile.storyConfig, enabled: true, genre: "noir" };
+
+    const built = buildPromptMessages(incoming, [], profile, [], context);
+    const joined = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+
+    // The whole point: nothing that looks like engine syntax survives to the model.
+    expect(joined.match(/\[\[[^\]]{1,30}\]\]/g)).toBeNull();
+    expect(joined).toContain("<config>");
+    expect(joined).toContain("<Blocks>");
+  });
+
   test("removes empty placeholder lines when a feature has no active payload", () => {
     const result = buildPromptMessages([
       { role: "system", content: "Before\n[[banlist]]\nAfter" }
@@ -622,5 +779,36 @@ describe("Megumin image workflow patching", () => {
     expect(patched["8"].inputs.height).toBe(1216);
     expect(patched["8"].inputs.seed).toBe(1234);
     expect(connection.metadata.comfyui.workflow_api_json["6"].inputs.text).toBe("old positive");
+  });
+});
+
+describe("Megumin V9 profile plumbing", () => {
+  test("every key a tab claims is actually syncable on the backend", () => {
+    // activeTabProfileKeys drives "sync this tab everywhere". A key the backend
+    // whitelist does not know is dropped in silence, so the two lists must agree.
+    const claimed = frontendSource.match(/^\s{4}\w+: \[(.*?)\],?$/gm) || [];
+    const keys = new Set<string>();
+    for (const line of claimed) {
+      for (const match of line.matchAll(/"([a-zA-Z0-9_]+)"/g)) keys.add(match[1]);
+    }
+    expect(keys.size).toBeGreaterThan(10);
+    for (const key of keys) {
+      expect(backendSource.includes(`"${key}"`)).toBe(true);
+    }
+  });
+
+  test("the V9 profile fields survive a save/hydrate round trip", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.storyConfig = { ...profile.storyConfig, enabled: true, genre: "noir" };
+    profile.blockStack = { order: ["cyoa", "world"], custom: [{ id: "c1", name: "Weather", tag: "Weather", content: "x" }], overrides: {} };
+    profile.worldState = { compactEnabled: true, fullFreq: 3 };
+    profile.statBlocks.bonds.fields.push({ id: "jealousy", label: "Jealousy", type: "meter", max: 100, start: 5 });
+
+    const round = mergeProfile(JSON.parse(JSON.stringify(profile)));
+    expect(round.storyConfig.genre).toBe("noir");
+    expect(round.blockStack.order).toEqual(["cyoa", "world"]);
+    expect(round.blockStack.custom[0].tag).toBe("Weather");
+    expect(round.worldState).toEqual({ compactEnabled: true, fullFreq: 3 });
+    expect(round.statBlocks.bonds.fields.some((f) => f.label === "Jealousy")).toBe(true);
   });
 });

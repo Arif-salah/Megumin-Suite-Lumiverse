@@ -9,6 +9,8 @@ import type {
   PromptBuildResult
 } from "./types";
 import { chunkContainsIndex, cleanChatText, npcBuildText, relevantChunks } from "./text";
+import { COMPACT_WORLD_STATE, buildBlocksEnvelope } from "./blocks";
+import { buildConfigBlock } from "./story-config";
 // The prompt database is the original Megumin prompt content, relocated into src.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -107,7 +109,9 @@ const UNUSED_PLACEHOLDERS = [
   "[[v9_lean_min]]",
   "[[v9_lean_max]]",
   "[[v9_full_min]]",
-  "[[v9_full_max]]"
+  "[[v9_full_max]]",
+  "[[config]]",
+  "[[blocks]]"
 ];
 
 export type PlaceholderHookGroup = {
@@ -192,6 +196,8 @@ export const REQUIRED_PLACEHOLDER_FEATURES = [
     { label: "long memory hook", aliases: ["[[long-Memory]]"] },
     { label: "short memory hook", aliases: ["[[Short-memory]]"] }
   ]),
+  featureSpec("story-config", "Story Config", [{ label: "config block hook", aliases: ["[[config]]"] }]),
+  featureSpec("blocks-envelope", "Response Blocks Envelope", [{ label: "blocks envelope hook", aliases: ["[[blocks]]"] }]),
   featureSpec("dynamic-ban-list", "Dynamic Ban List", [{ label: "ban list hook", aliases: ["[[banlist]]"] }]),
   featureSpec("dialogue-narration", "Dialogue / Narration Ratio", [{ label: "D/N ratio hook", aliases: ["[[DNRATIO]]"] }])
 ] as const;
@@ -255,7 +261,21 @@ function engineFamily(engine: EngineMode): { isV7: boolean; isV8: boolean; isV9:
 /** The V7 director styles keep the user's rule verbatim rather than wrapping it. */
 const V7_DIRECTOR_STYLES = new Set(["dir_v7", "dir_v7_core", "dir_v7_gentle"]);
 
-function buildBaseDict(profile: MeguminProfile, customEngines: EngineMode[], chatMessages: ChatMessage[], context: ChatContext): Record<string, string> {
+/** Does this preset actually carry the [[blocks]] anchor? */
+function presetUsesEnvelope(incoming: LlmMessage[]): boolean {
+  return incoming.some((message) => {
+    if (typeof message.content === "string") return message.content.includes("[[blocks]]");
+    return message.content.some((part) => part.type === "text" && part.text.includes("[[blocks]]"));
+  });
+}
+
+function buildBaseDict(
+  profile: MeguminProfile,
+  customEngines: EngineMode[],
+  chatMessages: ChatMessage[],
+  context: ChatContext,
+  usesEnvelope = false
+): Record<string, string> {
   const dict: Record<string, string> = {};
   const activeEngine = selectedEngine(profile, customEngines);
   const allModes = allEngines(customEngines);
@@ -280,6 +300,10 @@ function buildBaseDict(profile: MeguminProfile, customEngines: EngineMode[], cha
 
   const wordCountStr = isV9 ? "" : profile.userWordCount.trim() || "";
   dict.count = wordCountStr ? `— maximum ${wordCountStr} words` : "";
+
+  // Standing story settings. Empty when the config is off or every field is on
+  // Default, so [[config]] is stripped rather than leaving an empty shell.
+  dict.config = buildConfigBlock(profile.storyConfig);
 
   const personality = logic.personalities.find((item) => item.id === profile.personality);
   dict.main = personality?.content || "";
@@ -511,6 +535,55 @@ function buildBaseDict(profile: MeguminProfile, customEngines: EngineMode[], cha
     }
   }
 
+  // ── Compact World State ─────────────────────────────────────────────────────
+  // A short block most turns, the full one every Nth reply, so the running state
+  // costs a fraction of the tokens without ever going stale.
+  if (profile.blocks.includes("info") && dict.infoblock && profile.worldState?.compactEnabled) {
+    const frequency = Math.max(1, profile.worldState.fullFreq || 5);
+    if ((aiMessageCount + 1) % frequency !== 0) dict.infoblock = COMPACT_WORLD_STATE;
+  }
+
+  // The envelope carries one header above everything. These lines were written
+  // when each block had to introduce itself, and inside the envelope they are noise.
+  for (const key of ["infoblock", "npc_inner_chatter", "cyoa", "storytracker"]) {
+    if (dict[key]?.trim()) {
+      dict[key] = dict[key].replace(/# at the very end of the response put this block:\s*/gi, "");
+    }
+  }
+
+  // ── The <Blocks> envelope ───────────────────────────────────────────────────
+  dict.blocks = buildBlocksEnvelope(profile, dict);
+
+  // With the envelope in play, the loose per-block anchors would emit each block a
+  // second time, so they are blanked.
+  //
+  // The V9 beta blanks these unconditionally and treats a preset with no [[blocks]]
+  // anchor as a visible failure that emits nothing. This port still ships and
+  // supports the V7 presets, which carry the per-block anchors and no [[blocks]], so
+  // the anchors are surrendered only to a preset that actually asked for the
+  // envelope. Keying off the envelope merely being non-empty is not enough: the
+  // system blocks (Story Tracker, New NPC) populate it whenever their subsystem is
+  // on, which would strip [[storytracker]] out of a V7 preset that has nowhere else
+  // to put it.
+  //
+  // [[npc_dossier]] is deliberately NOT blanked: it is the dossier *rules*, not the
+  // block, and the envelope's slot line refers back to them.
+  //
+  // cyoa/cyoa2 are in this list where the beta's is missing them. The beta's own
+  // comment says the anchors are blanked so a block is not emitted twice, but CYOA
+  // was left out, so a V9.1 preset carrying both [[cyoa]] and [[blocks]] shipped the
+  // whole CYOA template to the model twice. Verified against the real preset.
+  if (usesEnvelope && dict.blocks.trim()) {
+    const owned = [
+      "infoblock", "infoblock2",
+      "cyoa", "cyoa2",
+      "npc_inner_chatter", "npc_inner_chatter2",
+      "storytracker", "storytracker2",
+      "npcDossierSlot"
+    ];
+    for (const key of owned) dict[key] = "";
+  }
+
   for (const key of Object.keys(dict)) dict[key] = normalizeMacroTargets(dict[key], context);
   return dict;
 }
@@ -541,10 +614,11 @@ export function buildMeguminReplacementMap(
   rawProfile: unknown,
   customEngines: EngineMode[],
   chatMessages: ChatMessage[],
-  context: ChatContext
+  context: ChatContext,
+  usesEnvelope = false
 ): Record<string, string> {
   const profile = hydrateProfile(rawProfile || DEFAULT_PROFILE);
-  return placeholderMapFromDict(buildBaseDict(profile, customEngines, chatMessages, context));
+  return placeholderMapFromDict(buildBaseDict(profile, customEngines, chatMessages, context, usesEnvelope));
 }
 
 export function estimateMeguminPayloadTokens(
@@ -603,7 +677,11 @@ export function replaceMeguminPlaceholders(
   context: ChatContext
 ): { messages: LlmMessage[]; replacementsMade: number; changedMessages: Array<{ messageIndex: number; replacementsMade: number }> } {
   const profile = hydrateProfile(rawProfile || DEFAULT_PROFILE);
-  const replacements = placeholderMapFromDict(buildBaseDict(profile, customEngines, chatMessages, context));
+  // The envelope only takes ownership of the per-block anchors in a preset that
+  // actually has somewhere to put it.
+  const replacements = placeholderMapFromDict(
+    buildBaseDict(profile, customEngines, chatMessages, context, presetUsesEnvelope(incoming))
+  );
   let replacementsMade = 0;
   const changedMessages: Array<{ messageIndex: number; replacementsMade: number }> = [];
   const messages = incoming.map((message, messageIndex) => {

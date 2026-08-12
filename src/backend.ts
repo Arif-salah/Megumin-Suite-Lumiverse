@@ -31,6 +31,12 @@ const SYNCABLE_PROFILE_KEYS = new Set([
   "onomatopoeia",
   "addons",
   "blocks",
+  "v9Limits",
+  "storyConfig",
+  "configPresets",
+  "blockStack",
+  "statBlocks",
+  "worldState",
   "model",
   "thinkEffort",
   "customThinkEffort",
@@ -46,7 +52,7 @@ let utilityBypassDepth = 0;
 let activeUtilityRequest: { messages: Array<{ role: "system" | "user" | "assistant"; content: string }>; trigger: string } | null = null;
 
 type PresetKind = "engine" | "image";
-type MeguminPresetKey = PresetKind | "suite-ds4" | "suite-gemini";
+type MeguminPresetKey = PresetKind | "suite-ds4" | "suite-gemini" | "suite-v91";
 type UtilityTrigger = "storyPlan" | "banList" | "memorySummary" | "imagePrompt" | "npcPortrait" | "dummyOrder";
 
 type PresetBridgeState = {
@@ -54,6 +60,7 @@ type PresetBridgeState = {
   imagePresetId?: string;
   suiteDs4PresetId?: string;
   suiteGeminiPresetId?: string;
+  suiteV91PresetId?: string;
   updatedAt?: number;
 };
 
@@ -61,7 +68,8 @@ const MEGUMIN_PRESET_TARGETS: Record<MeguminPresetKey, { name: string; stateKey:
   engine: { name: "Megumin Engine", stateKey: "enginePresetId" },
   image: { name: "Megumin Image", stateKey: "imagePresetId" },
   "suite-ds4": { name: "Megumin Suite V7 DS4", stateKey: "suiteDs4PresetId" },
-  "suite-gemini": { name: "Megumin Suite V7 Gemini", stateKey: "suiteGeminiPresetId" }
+  "suite-gemini": { name: "Megumin Suite V7 Gemini", stateKey: "suiteGeminiPresetId" },
+  "suite-v91": { name: "Megumin Suite V9.1 Universal", stateKey: "suiteV91PresetId" }
 };
 
 const UTILITY_TRIGGERS: Record<UtilityTrigger, string> = {
@@ -223,7 +231,10 @@ async function presetContractAudit(
   const scannedPresetNames: string[] = [];
 
   if (available) {
+    // V9.1 first: it is the current preset and the only one carrying the
+    // [[config]] and [[blocks]] hooks, so the audit must see it to report them.
     const presets = await Promise.all([
+      findMeguminPreset("suite-v91", userId).catch(() => null),
       findMeguminPreset("suite-ds4", userId).catch(() => null),
       findMeguminPreset("suite-gemini", userId).catch(() => null)
     ]);
@@ -257,7 +268,7 @@ async function presetContractAudit(
   const statusMessage = !available
     ? "Lumiverse preset access is unavailable."
     : !hasScannedPreset
-      ? "Uploaded Megumin Suite V7 preset not detected. Import the Megumin Suite preset in Lumiverse, then refresh Megumin Suite."
+      ? "Uploaded Megumin Suite preset not detected. Import a Megumin Suite preset (V9.1 Universal is the current one) in Lumiverse, then refresh Megumin Suite."
       : !hasDetectedHooks
         ? "Megumin Suite preset was found, but no Megumin placeholder hooks were detected in its prompt blocks."
         : undefined;

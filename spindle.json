@@ -1,10 +1,10 @@
 {
-  "version": "9.0.0",
+  "version": "9.1.0",
   "name": "Megumin Suite",
   "identifier": "megumin_suite",
-  "author": "Archkr",
-  "github": "https://github.com/Archkr/Lumiverse-Megumin-Suite",
-  "homepage": "https://github.com/Archkr/Lumiverse-Megumin-Suite",
+  "author": "Kazuma ONIISAN",
+  "github": "https://github.com/Arif-salah/Megumin-Suite-Lumiverse",
+  "homepage": "https://github.com/Arif-salah/Megumin-Suite-Lumiverse",
   "description": "Megumin Suite ported to Lumiverse: V9 narrative engines, memory, NPC tracking, ban lists, story planning, and image generation.",
   "permissions": [
     "interceptor",

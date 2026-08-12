@@ -44,6 +44,41 @@ export const DEFAULT_PROFILE: MeguminProfile = {
   customThinkEffort: "100",
   thinkingV2: false,
   v9Limits: { leanMin: 300, leanMax: 400, fullMin: 700, fullMax: 1200 },
+  storyConfig: {
+    enabled: false,
+    genre: "",
+    culture: "",
+    era: "",
+    pov: "",
+    focus: "",
+    tone: "",
+    narratorPresence: "",
+    npcSpeechStyle: "",
+    npcDisposition: "",
+    pace: "",
+    difficulty: "",
+    friction: "",
+    explicitness: "",
+    length: "",
+    notes: ""
+  },
+  configPresets: [],
+  // Empty by default: the reader chooses what the model emits. An empty stack
+  // means [[blocks]] resolves to "" and is stripped, which is the intended
+  // starting state rather than a failure.
+  blockStack: { order: [], custom: [], overrides: {} },
+  statBlocks: {
+    bonds: {
+      fields: [
+        { id: "mood", label: "Mood", type: "text", hint: "emotional surface" },
+        { id: "affection", label: "Affection", type: "meter", max: 100, start: 20 },
+        { id: "trust", label: "Trust", type: "meter", max: 100, start: 30 },
+        { id: "desire", label: "Desire", type: "meter", max: 100, start: 0 }
+      ]
+    },
+    sheet: { fields: [] }
+  },
+  worldState: { compactEnabled: false, fullFreq: 5 },
   storyPlan: {
     enabled: false,
     backend: "direct",
@@ -114,6 +149,20 @@ export function mergeProfile(raw: unknown): MeguminProfile {
   // Profiles saved before V9 have no v9Limits at all, so this fills the band in
   // rather than leaving the engine to stringify undefined into the prompt.
   merged.v9Limits = { ...base.v9Limits, ...(input.v9Limits || {}) };
+  merged.storyConfig = { ...base.storyConfig, ...(input.storyConfig || {}) };
+  merged.worldState = { ...base.worldState, ...(input.worldState || {}) };
+  merged.configPresets = Array.isArray(input.configPresets) ? input.configPresets : [];
+  merged.blockStack = {
+    ...base.blockStack,
+    ...(input.blockStack || {}),
+    order: Array.isArray(input.blockStack?.order) ? input.blockStack.order : [],
+    custom: Array.isArray(input.blockStack?.custom) ? input.blockStack.custom : [],
+    overrides: input.blockStack?.overrides || {}
+  };
+  merged.statBlocks = {
+    ...base.statBlocks,
+    ...(input.statBlocks || {})
+  };
   merged.storyPlan = { ...base.storyPlan, ...(input.storyPlan || {}) };
   merged.imageGen = { ...base.imageGen, ...(input.imageGen || {}) };
   merged.userWordCount = String((input as any).userWordCount ?? base.userWordCount);
