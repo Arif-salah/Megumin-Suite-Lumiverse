@@ -10,6 +10,9 @@ import {
 import type { ChatContext, ChatMessage, EngineMode, MeguminProfile, NpcRecord, RpcEnvelope, RpcResponse } from "./types";
 import { cleanAIOutput, cleanChatText, escapeXmlAttr, extractNpcBlocks, npcBuildText } from "./text";
 import { patchComfyWorkflow } from "./image-workflow";
+import { buildStoryPlanMessages, extractDirective } from "./story-director";
+import { buildImagePromptMessages, extractImagePrompt } from "./image-prompt";
+import { buildBanListMessages, parseBanListReply } from "./ban-list";
 
 declare const spindle: any;
 
@@ -483,6 +486,39 @@ function cleanedTranscript(messages: ChatMessage[], limit = 50): string {
     .join("\n\n");
 }
 
+/**
+ * The character card and active persona, for the Story Maker's {{charLore}} and
+ * {{userPersona}} slots.
+ *
+ * Both are optional: the `characters` permission can be revoked and personas are
+ * not in this extension's permission set at all, so a miss degrades to a plain
+ * label rather than failing the generation.
+ */
+async function loadStoryLore(context: ChatContext, userId?: string): Promise<{ charLore: string; userPersona: string }> {
+  let charLore = "No character description found.";
+  let userPersona = "No user persona found.";
+
+  if (context.characterId) {
+    try {
+      const character = await spindle.characters.get(context.characterId, userId);
+      const parts = [character?.description, character?.personality, character?.scenario]
+        .filter((part: unknown) => typeof part === "string" && part.trim());
+      if (parts.length) charLore = parts.join("\n\n");
+    } catch {
+      // Permission missing or card unavailable — the generic label stands.
+    }
+  }
+
+  try {
+    const persona = await spindle.personas?.getActive?.(userId);
+    if (persona?.description?.trim()) userPersona = persona.description.trim();
+  } catch {
+    // Personas are not in this extension's permission set; ignore.
+  }
+
+  return { charLore, userPersona };
+}
+
 function lastAssistant(messages: ChatMessage[]): ChatMessage | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index].role === "assistant") return messages[index];
@@ -570,28 +606,17 @@ async function generateImageForChat(scope: string, chatId: string, prompt: strin
   return { imageId: result?.imageId, imageUrl: result?.imageUrl, prompt };
 }
 
+/**
+ * Runs the real Image Gen prompt stack: the active template's rules and examples,
+ * the direct-language tag reference, and tags for NPCs the scene mentions.
+ */
 async function generateImagePromptFromChat(profile: MeguminProfile, messages: ChatMessage[], userId?: string): Promise<string> {
   const chatText = cleanedTranscript(messages, 10);
-  const style = profile.imageGen.promptStyle === "illustrious"
-    ? "Use Danbooru-style tags separated by commas. Focus on anime art style."
-    : profile.imageGen.promptStyle === "sdxl"
-      ? "Use natural, descriptive prose. Focus on photorealism."
-      : "Use a comma-separated list of detailed keywords and visual descriptors.";
-  const perspective = profile.imageGen.promptPerspective === "pov"
-    ? "First-person POV."
-    : profile.imageGen.promptPerspective === "character"
-      ? "Focus on character appearance and expression."
-      : "Focus on the whole scene and environment.";
-  return generateQuiet([
-    {
-      role: "system",
-      content: "You are an expert image prompt engineer. Convert the latest scene into a concise, high-quality image prompt. Return only the prompt."
-    },
-    {
-      role: "user",
-      content: `Chat:\n${chatText}\n\nStyle: ${style}\nPerspective: ${perspective}\nExtra: ${profile.imageGen.promptExtra || "None"}`
-    }
-  ], { backend: profile.imageGen.generatorBackend, presetKind: "image", userId, trigger: "imagePrompt" });
+  const raw = await generateQuiet(
+    buildImagePromptMessages(profile, chatText) as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+    { backend: profile.imageGen.generatorBackend, presetKind: "image", userId, trigger: "imagePrompt" }
+  );
+  return extractImagePrompt(raw);
 }
 
 async function generateWritingStyleRule(input: any, userId?: string): Promise<string> {
@@ -688,10 +713,14 @@ async function rpc(payload: RpcEnvelope, userId?: string): Promise<unknown> {
       if (!context.chatId) throw new Error("Open a chat before generating a story plan");
       const profile = await loadProfile(context.scope, userId);
       const messages = await getMessages(context.chatId);
-      const plan = await generateQuiet([
-        { role: "system", content: "You are an expert story architect. Brainstorm medium-to-long-term plot developments. Do not write actions, thoughts, or dialogue for the user character." },
-        { role: "user", content: `Create at least 10 future arc/chapter/episode possibilities from this story:\n\n${cleanedTranscript(messages, 60)}` }
-      ], { backend: profile.storyPlan.backend, presetKind: "engine", userId, trigger: "storyPlan" });
+      // The Story Maker writes against the character card and persona, so both are
+      // handed over when the permission allows reading them.
+      const lore = await loadStoryLore(context, userId);
+      const raw = await generateQuiet(
+        buildStoryPlanMessages(profile, cleanedTranscript(messages, 60), lore) as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+        { backend: profile.storyPlan.backend, presetKind: "engine", userId, trigger: "storyPlan" }
+      );
+      const plan = extractDirective(raw);
       profile.storyPlan.currentPlan = plan;
       profile.storyPlan.enabled = true;
       return { profile: await saveProfile(context.scope, profile, userId), plan };
@@ -700,11 +729,11 @@ async function rpc(payload: RpcEnvelope, userId?: string): Promise<unknown> {
       if (!context.chatId) throw new Error("Open a chat before analyzing style");
       const profile = await loadProfile(context.scope, userId);
       const messages = await getMessages(context.chatId);
-      const analysis = await generateQuiet([
-        { role: "system", content: "Identify the 5 most repetitive cliche or overused stylistic patterns. Return only short generalized rules separated by commas." },
-        { role: "user", content: cleanedTranscript(messages.filter((message) => message.role === "assistant"), 50) }
-      ], { backend: profile.banListBackend, presetKind: "engine", userId, trigger: "banList" });
-      const phrases = analysis.split(/[,\n-]+/).map((item) => item.trim().replace(/^["']|["']$/g, "")).filter((item) => item.length > 3);
+      const raw = await generateQuiet(
+        buildBanListMessages(profile, cleanedTranscript(messages.filter((message) => message.role === "assistant"), 50)) as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+        { backend: profile.banListBackend, presetKind: "engine", userId, trigger: "banList" }
+      );
+      const phrases = parseBanListReply(raw);
       for (const phrase of phrases) if (!profile.banList.includes(phrase)) profile.banList.push(phrase);
       return { profile: await saveProfile(context.scope, profile, userId), added: phrases };
     }

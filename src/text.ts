@@ -52,6 +52,23 @@ export function npcBuildText(n: NpcRecord): string {
   return lines.join("\n");
 }
 
+/**
+ * Field labels, newest first. The V9 dossier template renamed several of them
+ * (Occupation → Role, Personality Snapshot → Personality, Current Agenda →
+ * Agenda, Hidden Layer → Secrets), so each record field accepts every label it
+ * has ever been written under. A dossier from either template parses.
+ */
+const NPC_FIELD_LABELS: Array<[keyof NpcRecord, string[]]> = [
+  ["appearance", ["Appearance"]],
+  ["imageTags", ["Image Tags"]],
+  ["occupation", ["Role", "Occupation"]],
+  ["background", ["Background"]],
+  ["innerCircle", ["Inner Circle"]],
+  ["personality", ["Personality", "Personality Snapshot"]],
+  ["agenda", ["Agenda", "Current Agenda"]],
+  ["hiddenLayer", ["Secrets \\(never narrated unless disclosed\\)", "Secrets", "Hidden Layer"]]
+];
+
 export function parseNpcBlock(rawBlock: string): Partial<NpcRecord> {
   const strip = (s: string | undefined) => stripXmlishTags((s || "").replace(/\*\*/g, ""));
   const data: Partial<NpcRecord> = {};
@@ -63,46 +80,68 @@ export function parseNpcBlock(rawBlock: string): Partial<NpcRecord> {
   if (ageLine) data.age = strip(ageLine[1]);
   if (sexLine) data.sex = strip(sexLine[1]);
 
-  const fields: Array<[keyof NpcRecord, RegExp]> = [
-    ["appearance", /\*\*Appearance:\*\*\s*([\s\S]*?)(?=\n\s*\*\*[A-Z]|<\/details>|$)/i],
-    ["occupation", /\*\*Occupation:\*\*\s*([\s\S]*?)(?=\n\s*\*\*[A-Z]|<\/details>|$)/i],
-    ["background", /\*\*Background:\*\*\s*([\s\S]*?)(?=\n\s*\*\*[A-Z]|<\/details>|$)/i],
-    ["innerCircle", /\*\*Inner Circle:\*\*\s*([\s\S]*?)(?=\n\s*\*\*[A-Z]|<\/details>|$)/i],
-    ["personality", /\*\*Personality Snapshot:\*\*\s*([\s\S]*?)(?=\n\s*\*\*[A-Z]|<\/details>|$)/i],
-    ["agenda", /\*\*Current Agenda:\*\*\s*([\s\S]*?)(?=\n\s*\*\*[A-Z]|<\/details>|$)/i],
-    ["hiddenLayer", /\*\*Hidden Layer:\*\*\s*([\s\S]*?)(?=\s*<\/details>|$)/i]
-  ];
-
-  for (const [key, regex] of fields) {
-    const match = rawBlock.match(regex);
-    if (match) (data as Record<string, unknown>)[key] = strip(match[1]);
+  for (const [key, labels] of NPC_FIELD_LABELS) {
+    for (const label of labels) {
+      // A field runs until the next bolded field, the end of either wrapper, or
+      // the end of the block.
+      const regex = new RegExp(`\\*\\*${label}:\\*\\*\\s*([\\s\\S]*?)(?=\\n\\s*\\*\\*[A-Z]|<\\/details>|<\\/New_NPC>|$)`, "i");
+      const match = rawBlock.match(regex);
+      if (match && strip(match[1])) {
+        (data as Record<string, unknown>)[key] = strip(match[1]);
+        break;
+      }
+    }
   }
   return data;
 }
 
+/**
+ * Both dossier wrappers the suite has shipped:
+ *   V9  — <New_NPC name="Arue"> … </New_NPC>, which the Blocks envelope emits
+ *   V7  — <details><summary>New NPC: Arue</summary> … </details>
+ *
+ * Reading only the one the current template asks for would silently drop every
+ * dossier written under the other, so both are matched.
+ */
+const NPC_BLOCK_PATTERNS: RegExp[] = [
+  /<New_NPC(?:\s+name=["']?(.*?)["']?)?\s*>([\s\S]*?)<\/New_NPC\s*>/gi,
+  /<details>[\s\S]*?<summary>.*?New NPC:\s*(.*?)<\/summary>([\s\S]*?)<\/details>/gi
+];
+
 export function extractNpcBlocks(content: string): NpcRecord[] {
   const records: NpcRecord[] = [];
-  const npcRegex = /<details>[\s\S]*?<summary>.*?New NPC:\s*(.*?)<\/summary>([\s\S]*?)<\/details>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = npcRegex.exec(content)) !== null) {
-    const fallbackName = stripXmlishTags(match[1]).replace(/\*\*/g, "").trim();
-    const parsed = parseNpcBlock(match[0]);
-    const name = parsed.name || fallbackName;
-    if (!name) continue;
-    records.push({
-      name,
-      age: parsed.age || "",
-      sex: parsed.sex || "",
-      appearance: parsed.appearance || "",
-      occupation: parsed.occupation || "",
-      background: parsed.background || "",
-      innerCircle: parsed.innerCircle || "",
-      personality: parsed.personality || "",
-      agenda: parsed.agenda || "",
-      hiddenLayer: parsed.hiddenLayer || "",
-      pfp: "",
-      timestamp: Date.now()
-    });
+  const seen = new Set<string>();
+
+  for (const pattern of NPC_BLOCK_PATTERNS) {
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(content)) !== null) {
+      const fallbackName = stripXmlishTags(match[1] || "").replace(/\*\*/g, "").trim();
+      const parsed = parseNpcBlock(match[0]);
+      const name = parsed.name || fallbackName;
+      if (!name) continue;
+
+      // The same NPC can appear under both wrappers in one message; keep the first.
+      const key = name.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      records.push({
+        name,
+        age: parsed.age || "",
+        sex: parsed.sex || "",
+        appearance: parsed.appearance || "",
+        imageTags: parsed.imageTags || "",
+        occupation: parsed.occupation || "",
+        background: parsed.background || "",
+        innerCircle: parsed.innerCircle || "",
+        personality: parsed.personality || "",
+        agenda: parsed.agenda || "",
+        hiddenLayer: parsed.hiddenLayer || "",
+        pfp: "",
+        timestamp: Date.now()
+      });
+    }
   }
   return records;
 }

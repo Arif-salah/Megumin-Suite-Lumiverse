@@ -108,6 +108,7 @@ import {
   storyConfigFields
 } from "./story-config";
 import { BLOCK_REGISTRY, arrangeableBlocks, blockById } from "./blocks";
+import { SD_CONTENT_RATINGS, SD_FLAVORS, SD_GENRES, SD_PACING } from "./story-director";
 
 type Ctx = SpindleFrontendContext & Record<string, any>;
 
@@ -934,6 +935,16 @@ async function handleAction(el: HTMLElement) {
       render();
       return;
     }
+    if (action === "sp-flavor") {
+      const flavor = el.dataset.value || "";
+      const tags = state.profile.storyPlan.flavorTags;
+      const at = tags.indexOf(flavor);
+      if (at >= 0) tags.splice(at, 1);
+      else tags.push(flavor);
+      saveProfileSoon();
+      render();
+      return;
+    }
     if (action === "config-preset") {
       const preset = allConfigPresets(state.profile.configPresets || []).find((item) => item.id === el.dataset.value);
       if (!preset) return;
@@ -1658,12 +1669,33 @@ function renderStory(): string {
       <div class="mtab-setting-row">${settingText("Auto-Trigger Mode", "Generate new plans automatically.")}<div style="display:flex; gap:8px; align-items:center;"><select id="sp_trigger" class="ps-modern-input" data-bind="storyPlan.triggerMode" style="width: 150px; cursor: pointer;"><option value="manual" ${sp.triggerMode === "manual" ? "selected" : ""}>Manual Only</option><option value="frequency" ${sp.triggerMode === "frequency" ? "selected" : ""}>Every X Replies</option></select><input type="number" id="sp_freq" class="ps-modern-input" data-bind="storyPlan.autoFreq" value="${sp.autoFreq}" min="1" style="width: 70px; text-align: center; display: ${sp.triggerMode === "frequency" ? "block" : "none"};" /></div></div>
     </div>
     <div class="mtab-panel">
-      <div class="panel-heading-row">
-        <div class="mtab-panel-title gold">${icon("fa-book-open")} Current Story Plan</div>
-        <button id="sp_btn_generate" class="wstyle-gen-btn" type="button" data-action="story-generate">${icon("fa-bolt")} Generate Plan Now</button>
+      <div class="mtab-panel-title gold">${icon("fa-masks-theater")} Director Settings</div>
+      <div class="mtab-callout">${icon("fa-circle-info")}<span>The standing brief the Story Maker writes against. It shapes every directive it generates from here on.</span></div>
+      <div class="mtab-setting-row">${settingText("Primary Genre", "The conventions the arc plays straight.")}<select class="ps-modern-input" data-bind="storyPlan.primaryGenre" style="width:240px; cursor:pointer;">
+        ${Object.entries(SD_GENRES).map(([id, genre]) => `<option value="${id}" ${sp.primaryGenre === id ? "selected" : ""}>${escapeHtml(genre.label)}</option>`).join("")}
+      </select></div>
+      <div class="mtab-hint" style="margin:-6px 0 12px 0;">${escapeHtml(SD_GENRES[sp.primaryGenre]?.desc || "")}</div>
+      <div class="mtab-setting-row">${settingText("Pacing", "How fast the arc escalates.")}<select class="ps-modern-input" data-bind="storyPlan.pacing" style="width:170px; cursor:pointer;">
+        ${SD_PACING.map((id) => `<option value="${id}" ${sp.pacing === id ? "selected" : ""}>${id.charAt(0).toUpperCase()}${id.slice(1)}</option>`).join("")}
+      </select></div>
+      <div class="mtab-setting-row">${settingText("Content Rating", "Leave on None to let the story decide.")}<select class="ps-modern-input" data-bind="storyPlan.contentRating" style="width:170px; cursor:pointer;">
+        ${SD_CONTENT_RATINGS.map((id) => `<option value="${id}" ${sp.contentRating === id ? "selected" : ""}>${id === "none" ? "None" : id.charAt(0).toUpperCase() + id.slice(1)}</option>`).join("")}
+      </select></div>
+      <div class="wstyle-section-head purple" style="margin-top:14px;">${icon("fa-puzzle-piece")} Flavor Elements</div>
+      <div class="cfg-chips">
+        ${SD_FLAVORS.map((flavor) => `<button type="button" class="cfg-chip ${sp.flavorTags.includes(flavor) ? "active" : ""}" data-action="sp-flavor" data-value="${escapeHtml(flavor)}">${escapeHtml(flavor)}</button>`).join("")}
       </div>
-      <textarea id="sp_current_plan" class="ps-modern-input textarea-xl" data-bind="storyPlan.currentPlan" placeholder="Generated plot milestones will appear here.">${escapeHtml(sp.currentPlan)}</textarea>
-      <div class="mtab-callout">${icon("fa-circle-info")}<span>A tracker will be added automatically at the end of each response.</span></div>
+      <div class="mtab-setting-row" style="margin-top:14px;">${settingText("Director's Note", "A standing instruction for every directive.")}</div>
+      <textarea class="ps-modern-input textarea-sm" data-bind="storyPlan.directorsNote" placeholder="e.g. never let Maya win; keep the brother off-screen until act three.">${escapeHtml(sp.directorsNote)}</textarea>
+      ${toggleGeneric(`${icon("fa-unlock")} Unrestricted Content`, "storyPlan.unrestrictedContent", sp.unrestrictedContent, "Adds the unrestricted-content block to the directive injection. Only affects what the Director is allowed to plan.", true)}
+    </div>
+    <div class="mtab-panel">
+      <div class="panel-heading-row">
+        <div class="mtab-panel-title gold">${icon("fa-book-open")} Current Directive</div>
+        <button id="sp_btn_generate" class="wstyle-gen-btn" type="button" data-action="story-generate">${icon("fa-bolt")} ${sp.currentPlan.trim() ? "Evolve Directive" : "Generate Directive"}</button>
+      </div>
+      <textarea id="sp_current_plan" class="ps-modern-input textarea-xl" data-bind="storyPlan.currentPlan" placeholder="The generated narrative blueprint will appear here.">${escapeHtml(sp.currentPlan)}</textarea>
+      <div class="mtab-callout">${icon("fa-circle-info")}<span>An existing directive is fed back in and evolved rather than replaced. A tracker is appended to each response automatically.</span></div>
     </div>
     </div>`;
 }
@@ -1744,7 +1776,14 @@ function renderImage(): string {
           <div style="flex:1;"><div class="mini-label">Camera Perspective</div><select id="ig_persp" class="ps-modern-input" data-bind="imageGen.promptPerspective" style="padding: 8px; font-size: 0.8rem;"><option value="scene" ${ig.promptPerspective === "scene" ? "selected" : ""}>Cinematic Scene</option><option value="pov" ${ig.promptPerspective === "pov" ? "selected" : ""}>First Person (POV)</option><option value="character" ${ig.promptPerspective === "character" ? "selected" : ""}>Character Portrait</option></select></div>
         </div>
         <input type="text" id="ig_extra" class="ps-modern-input" data-bind="imageGen.promptExtra" placeholder="Extra Instructions (e.g. moody lighting, dark atmosphere...)" value="${escapeHtml(ig.promptExtra)}" style="padding: 8px; font-size: 0.8rem;" />
+        <div style="display:flex; gap:15px; margin-top:10px;">
+          <div style="flex:1;"><div class="mini-label">Images Per Response</div><input type="number" class="ps-modern-input" data-bind="imageGen.imageCount" value="${ig.imageCount}" min="1" max="4" style="padding:8px; font-size:0.8rem;" /></div>
+        </div>
+        <div class="mtab-callout" style="margin-top:12px;">${icon("fa-circle-info")}<span>Style and perspective together pick the prompt template — six are shipped, one per Illustrious/SDXL × POV/Cinematic/Portrait pairing.</span></div>
       </div>
+      ${toggleGeneric(`${icon("fa-list-ol")} Include Worked Examples`, "imageGen.includeExamples", ig.includeExamples, "Ships the template's example prompts alongside its rules. Costs tokens; markedly improves format adherence.", true)}
+      ${toggleGeneric(`${icon("fa-align-left")} Direct Language`, "imageGen.directLanguage", ig.directLanguage, "Exact Booru tags with the explicit tag reference, instead of euphemisms. For NSFW scenes.", true)}
+      ${toggleGeneric(`${icon("fa-address-book")} Inject NPC Tags`, "imageGen.injectNpcTags", ig.injectNpcTags, "Send stored appearance tags for NPC Bank characters the recent scene mentions, so they are drawn consistently.", true)}
     </div>
     <div class="mtab-panel" style="margin-bottom:16px;">
       <div class="panel-heading-row">

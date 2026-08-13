@@ -11,6 +11,10 @@ import type {
 import { cleanChatText, npcBuildText } from "./text";
 import { COMPACT_WORLD_STATE, buildBlocksEnvelope } from "./blocks";
 import { buildConfigBlock } from "./story-config";
+import { buildStoryPlanInjection } from "./story-director";
+import { banListPrompts } from "./ban-list";
+import { buildImageInjection } from "./image-prompt";
+import { buildNpcDossierDirective } from "./npc-bank";
 // The prompt database is the original Megumin prompt content, relocated into src.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -431,16 +435,14 @@ function buildBaseDict(
     dict.AI2 = "";
   }
 
-  if (profile.storyPlan.enabled && profile.storyPlan.currentPlan.trim()) {
-    dict.storyplan = `<Story_Plan>\nThis is a possible event for the story, take from it:\n${profile.storyPlan.currentPlan.trim()}\n</Story_Plan>`;
-    dict.storytracker = "<Story_Tracker>\narc: The Arc that is now active.\nchapter: The chapter that is now active.\nEpisode: The episode that is now active.\nSecrets: Any secret that the user/{{user}} doesn't know.\n</Story_Tracker>";
-  } else {
-    dict.storyplan = "";
-    dict.storytracker = "";
-  }
+  // The tracker rides on the Story Planner being on, not on a plan existing yet —
+  // it is how the plan learns where the story currently stands.
+  const storyInjection = buildStoryPlanInjection(profile);
+  dict.storyplan = storyInjection.storyplan;
+  dict.storytracker = storyInjection.storytracker;
 
   dict.banlist = profile.banList.length > 0
-    ? `[BAN LIST]\nNever rely on these clichés, tropes, or repetitive patterns. They are dead language:\n${profile.banList.map((item) => `- ${item}`).join("\n")}`
+    ? banListPrompts(profile).injectionTemplate.replace("{{banItems}}", profile.banList.map((item) => `- ${item}`).join("\n"))
     : "";
 
   for (const [source, target, condition] of overrides) {
@@ -469,21 +471,12 @@ function buildBaseDict(
       (imageMode === "frequency" && (aiMessageCount + 1) % Math.max(1, profile.imageGen.autoGenFreq || 1) === 0) ||
       imageMode === "conditional");
   if (shouldInjectImage) {
-    const style = profile.imageGen.promptStyle === "illustrious"
-      ? "Use Danbooru-style tags focused on anime art."
-      : profile.imageGen.promptStyle === "sdxl"
-        ? "Use natural descriptive prose focused on photorealism."
-        : "Use concise visual keywords.";
-    const perspective = profile.imageGen.promptPerspective === "pov"
-      ? "First-person POV."
-      : profile.imageGen.promptPerspective === "character"
-        ? "Focus on character appearance."
-        : "Describe the scene and environment.";
-    const conditional = imageMode === "conditional"
-      ? "Only output the image tag if the character explicitly takes, sends, or shares an image in this moment.\n"
-      : "";
-    dict.img1 = `[IMAGE GENERATION]\n${conditional}Style: ${style}\nPerspective: ${perspective}${profile.imageGen.promptExtra ? `\nExtra: ${profile.imageGen.promptExtra}` : ""}`;
-    dict.img2 = `<img prompt="prompt">`;
+    // The recent transcript is what decides which known NPCs get their tags sent
+    // along, so the image model draws them consistently.
+    const recentText = chatMessages.slice(-4).map((msg) => cleanChatText(msg.content)).join(" ");
+    const injection = buildImageInjection(profile, recentText);
+    dict.img1 = injection.img1;
+    dict.img2 = injection.img2;
   } else {
     dict.img1 = "";
     dict.img2 = "";
@@ -492,7 +485,7 @@ function buildBaseDict(
   const recentText = chatMessages.slice(-4).map((msg) => cleanChatText(msg.content)).join(" ").toLowerCase();
   const npcBlock = buildNpcInjection(profile.npcBank.npcs, recentText);
   dict.npcList = npcBlock;
-  dict.npcDossier = profile.npcBank.enabled ? npcDossierDirective() : "";
+  dict.npcDossier = buildNpcDossierDirective(profile);
   dict.npcDossierSlot = profile.npcBank.enabled ? "[NPC Dossier block here]" : "";
 
   // Memory Core is not part of this port. The hooks stay declared and empty so a
@@ -722,26 +715,6 @@ function buildNpcInjection(npcs: NpcRecord[], recentText: string): string {
     .slice(0, 3);
   if (scored.length === 0) return "";
   return `[RELEVANT NPCs]\nThe following known NPCs are relevant to the current context:\n<retrieved_npcs>\n${scored.map(({ npc }) => `<npc name="${npc.name}">\n${npcBuildText(npc)}\n</npc>`).join("\n\n")}\n</retrieved_npcs>`;
-}
-
-function npcDossierDirective(): string {
-  return `<npc_dossier>
-trigger: Generate only when a new significant NPC is introduced.
-format: Collapsible HTML details block. Dense, dashboard-style, no prose.
-template:
-<details>
-<summary>New NPC: [Full Name]</summary>
-**Name:** [Full name] | **Age:** [Age] | **Sex:** [M/F/Other]
-**Appearance:** [Visual description]
-**Occupation:** [Current role]
-**Background:** [3-5 sentence life sketch]
-**Inner Circle:**
-* [Name] - [Relationship and dynamic]
-**Personality Snapshot:** [Contradictions and defining behavior]
-**Current Agenda:** [What they want right now]
-**Hidden Layer:** [A secret or motive]
-</details>
-</npc_dossier>`;
 }
 
 export function buildPromptMessages(

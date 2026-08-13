@@ -40,6 +40,8 @@ export const DEFAULT_PROFILE: MeguminProfile = {
   userPronouns: "off",
   banList: [],
   banListBackend: "direct",
+  banListCustomPrompts: null,
+  banListCustomPromptsEnabled: false,
   thinkEffort: "unspecified",
   customThinkEffort: "100",
   thinkingV2: false,
@@ -84,7 +86,15 @@ export const DEFAULT_PROFILE: MeguminProfile = {
     backend: "direct",
     triggerMode: "manual",
     autoFreq: 10,
-    currentPlan: ""
+    currentPlan: "",
+    contentRating: "none",
+    pacing: "natural",
+    primaryGenre: "drama",
+    flavorTags: [],
+    directorsNote: "",
+    unrestrictedContent: false,
+    customPrompts: null,
+    customPromptsEnabled: false
   },
   imageGen: {
     enabled: false,
@@ -117,12 +127,20 @@ export const DEFAULT_PROFILE: MeguminProfile = {
     promptExtra: "",
     triggerMode: "manual",
     autoGenFreq: 1,
-    previewPrompt: false
+    previewPrompt: false,
+    imageCount: 1,
+    includeExamples: true,
+    directLanguage: false,
+    injectNpcTags: false,
+    customPrompts: null,
+    customPromptsEnabled: false
   },
   npcBank: {
     enabled: false,
     sendPortraitsToAi: false,
-    npcs: []
+    npcs: [],
+    customPrompts: null,
+    customPromptsEnabled: false
   }
 };
 
@@ -151,7 +169,11 @@ export function mergeProfile(raw: unknown): MeguminProfile {
     ...base.statBlocks,
     ...(input.statBlocks || {})
   };
-  merged.storyPlan = { ...base.storyPlan, ...(input.storyPlan || {}) };
+  merged.storyPlan = {
+    ...base.storyPlan,
+    ...(input.storyPlan || {}),
+    flavorTags: Array.isArray(input.storyPlan?.flavorTags) ? input.storyPlan.flavorTags : []
+  };
   merged.imageGen = { ...base.imageGen, ...(input.imageGen || {}) };
   merged.userWordCount = String((input as any).userWordCount ?? base.userWordCount);
   merged.userLanguage = String((input as any).userLanguage ?? base.userLanguage);

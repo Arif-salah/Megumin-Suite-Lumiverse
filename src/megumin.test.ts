@@ -4,6 +4,10 @@ import { clone, mergeProfile } from "./defaults";
 import { REQUIRED_PLACEHOLDER_FEATURES, auditPresetPlaceholders, buildPromptMessages, estimateMeguminPayloadTokens, getLogic } from "./prompt-engine";
 import { extractNpcBlocks } from "./text";
 import { patchComfyWorkflow } from "./image-workflow";
+import { DEFAULT_PROMPTS } from "./default-prompts";
+import { buildDirectorSettings, buildStoryPlanMessages, extractDirective } from "./story-director";
+import { buildImageInjection, extractImagePrompt, relevantNpcImageTags, templateKey, templateParts } from "./image-prompt";
+import { parseBanListReply } from "./ban-list";
 import { DEFAULT_PROFILE } from "./defaults";
 import type { ChatContext, ChatMessage, EngineMode, LlmMessage } from "./types";
 
@@ -317,13 +321,16 @@ describe("Megumin prompt assembly", () => {
     expect(joined).toContain("Narration must utilize onomatopoeia");
     expect(joined).toContain("[BAN LIST]");
     expect(joined).toContain("dead language");
-    expect(joined).toContain("<Story_Plan>");
+    // The real Story Planner template wraps the directive in <Story_Director>.
+    expect(joined).toContain("<Story_Director>");
     expect(joined).toContain("A summer festival exposes the hidden archive clue.");
     expect(joined).toContain("<Story_Tracker>");
-    expect(joined).toContain("[IMAGE GENERATION]");
-    expect(joined).toContain("<img prompt=\"prompt\">");
+    // The real image template ships the tag format and the worked examples.
+    expect(joined).toContain("IMAGE GENERATION");
+    expect(joined).toContain("<img prompt=");
+    expect(joined).toContain("image tag");
     expect(joined).toContain("[RELEVANT NPCs]");
-    expect(joined).toContain("<npc_dossier>");
+    expect(joined).toContain("NPC DOSSIER");
     for (const feature of REQUIRED_PLACEHOLDER_FEATURES) {
       for (const placeholder of feature.placeholders) expect(joined).not.toContain(placeholder);
     }
@@ -857,5 +864,159 @@ describe("Megumin Memory Core removal", () => {
     expect(built.messages[0].content).toBe("A\nB");
     // The audit must not ask a preset for hooks the port no longer fills.
     expect(REQUIRED_PLACEHOLDER_FEATURES.some((feature) => feature.id === "memory-core")).toBe(false);
+  });
+});
+
+describe("Megumin subsystem prompts", () => {
+  test("the shipped prompt library carries every subsystem this port keeps", () => {
+    expect(Object.keys(DEFAULT_PROMPTS).sort()).toEqual(["banList", "imageGen", "npcBank", "storyPlan"]);
+    // Memory Core is dropped, so its prompts must not have come along.
+    expect(Object.keys(DEFAULT_PROMPTS)).not.toContain("memoryCore");
+    for (const [name, section] of Object.entries(DEFAULT_PROMPTS as Record<string, Record<string, string>>)) {
+      for (const [key, value] of Object.entries(section)) {
+        expect(typeof value, `${name}.${key}`).toBe("string");
+        expect(value.trim().length, `${name}.${key}`).toBeGreaterThan(20);
+      }
+    }
+  });
+
+  test("the Story Director compiles its settings into the brief", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.storyPlan.contentRating = "explicit";
+    profile.storyPlan.pacing = "escalating";
+    profile.storyPlan.primaryGenre = "horror";
+    profile.storyPlan.flavorTags = ["Gothic", "Slow Burn Romance"];
+    profile.storyPlan.directorsNote = "Never let Maya win.";
+
+    const settings = buildDirectorSettings(profile.storyPlan);
+    expect(settings).toContain("Content Rating: EXPLICIT");
+    expect(settings).toContain("Pacing: ESCALATING");
+    expect(settings).toContain("Primary Genre: Horror / Dark");
+    expect(settings).toContain("Flavor Elements: Gothic, Slow Burn Romance");
+    expect(settings).toContain("Never let Maya win.");
+    expect(settings).toContain("Generate the first narrative directive");
+
+    profile.storyPlan.currentPlan = "The festival hides the archive clue.";
+    expect(buildDirectorSettings(profile.storyPlan)).toContain("PREVIOUS DIRECTIVE");
+  });
+
+  test("the Story Maker prompt carries the lore, persona and transcript", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    const messages = buildStoryPlanMessages(profile, "TRANSCRIPT_SENTINEL", {
+      charLore: "LORE_SENTINEL",
+      userPersona: "PERSONA_SENTINEL"
+    });
+    const joined = messages.map((m) => String(m.content)).join("\n");
+    expect(joined).toContain("LORE_SENTINEL");
+    expect(joined).toContain("PERSONA_SENTINEL");
+    expect(joined).toContain("TRANSCRIPT_SENTINEL");
+    expect(joined).not.toContain("{{charLore}}");
+    expect(joined).not.toContain("{{chatHistory}}");
+    expect(joined).not.toContain("{{directorSettings}}");
+  });
+
+  test("a directive is pulled out of the model's reply", () => {
+    expect(extractDirective("<think>noise</think><directive>THE PLAN</directive>")).toBe("THE PLAN");
+    expect(extractDirective("<think>noise</think>\nTHE PLAN")).toBe("THE PLAN");
+  });
+
+  test("image prompts use the template the style and perspective select", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.imageGen.enabled = true;
+    profile.imageGen.promptStyle = "sdxl";
+    profile.imageGen.promptPerspective = "pov";
+    expect(templateKey(profile.imageGen)).toBe("sdxl_pov");
+
+    profile.imageGen.promptStyle = "illustrious";
+    profile.imageGen.promptPerspective = "character";
+    expect(templateKey(profile.imageGen)).toBe("illus_portrait");
+
+    for (const style of ["illustrious", "sdxl", "standard"] as const) {
+      for (const perspective of ["scene", "pov", "character"] as const) {
+        profile.imageGen.promptStyle = style;
+        profile.imageGen.promptPerspective = perspective;
+        expect(templateParts(profile).rules.length).toBeGreaterThan(50);
+      }
+    }
+  });
+
+  test("direct language and examples are opt-in", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.imageGen.enabled = true;
+
+    profile.imageGen.includeExamples = false;
+    expect(templateParts(profile).examples).toBe("");
+    profile.imageGen.includeExamples = true;
+    expect(templateParts(profile).examples.length).toBeGreaterThan(50);
+
+    profile.imageGen.directLanguage = false;
+    expect(buildImageInjection(profile, "").img1).not.toContain("DIRECT LANGUAGE");
+    profile.imageGen.directLanguage = true;
+    expect(buildImageInjection(profile, "").img1).toContain("DIRECT LANGUAGE");
+  });
+
+  test("NPC image tags only ride along for NPCs the scene mentions", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.imageGen.enabled = true;
+    profile.imageGen.injectNpcTags = true;
+    profile.npcBank.npcs = [
+      { name: "Arue", imageTags: "1girl, crimson eyes", timestamp: 1 },
+      { name: "Kazuma", imageTags: "1boy, brown hair", timestamp: 2 }
+    ];
+
+    const tags = relevantNpcImageTags(profile, "Arue steps into the lantern light.");
+    expect(tags).toContain("Arue: 1girl, crimson eyes");
+    expect(tags).not.toContain("Kazuma");
+
+    profile.imageGen.injectNpcTags = false;
+    expect(relevantNpcImageTags(profile, "Arue steps into the lantern light.")).toBe("");
+  });
+
+  test("an image prompt survives being wrapped in an img tag", () => {
+    expect(extractImagePrompt('<think>x</think><img prompt="1girl, red hair, night">')).toBe("1girl, red hair, night");
+    expect(extractImagePrompt("1girl, red hair, night")).toBe("1girl, red hair, night");
+  });
+
+  test("the ban list reply parses out of commas, newlines and bullets", () => {
+    expect(parseBanListReply("a shiver ran down their spine, eyes sparkled with mischief")).toEqual([
+      "a shiver ran down their spine",
+      "eyes sparkled with mischief"
+    ]);
+    expect(parseBanListReply("- breath she did not know she was holding\n- a ghost of a smile")).toEqual([
+      "breath she did not know she was holding",
+      "a ghost of a smile"
+    ]);
+    expect(parseBanListReply("<think>planning</think>\nthe air was thick with tension")).toEqual([
+      "the air was thick with tension"
+    ]);
+  });
+
+  test("NPC dossiers parse from both the V9 and V7 wrappers", () => {
+    const v9 = extractNpcBlocks(`<New_NPC name="Arue">
+**Name:** Arue Kirasaki | **Age:** 24 | **Sex:** F
+**Role:** Archivist
+**Appearance:** Tall, crimson eyes, ink-stained fingers.
+**Image Tags:** 1girl, long black hair, crimson eyes, pale skin
+**Background:** Raised in the guild archive.
+**Personality:** Guarded, curious.
+**Agenda:** Find the missing ledger.
+</New_NPC>`);
+    expect(v9).toHaveLength(1);
+    expect(v9[0].name).toBe("Arue Kirasaki");
+    expect(v9[0].occupation).toBe("Archivist");
+    expect(v9[0].imageTags).toContain("crimson eyes");
+    expect(v9[0].agenda).toBe("Find the missing ledger.");
+
+    const v7 = extractNpcBlocks(`<details>
+<summary>New NPC: Kazuma</summary>
+**Name:** Kazuma | **Age:** 17 | **Sex:** M
+**Occupation:** Adventurer
+**Personality Snapshot:** Cynical.
+**Current Agenda:** Survive.
+</details>`);
+    expect(v7).toHaveLength(1);
+    expect(v7[0].occupation).toBe("Adventurer");
+    expect(v7[0].personality).toBe("Cynical.");
+    expect(v7[0].agenda).toBe("Survive.");
   });
 });

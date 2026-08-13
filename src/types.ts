@@ -97,6 +97,8 @@ export interface NpcRecord {
   pfp?: string;
   pfpImageId?: string;
   pfpImageUrl?: string;
+  /** Booru tags for image generation, so a known NPC is drawn consistently. */
+  imageTags?: string;
   timestamp: number;
 }
 
@@ -134,6 +136,32 @@ export interface ImageGenSettings {
   triggerMode: "always" | "manual" | "frequency" | "conditional";
   autoGenFreq: number;
   previewPrompt: boolean;
+  /** How many images the injected instruction asks the model to tag. */
+  imageCount: number;
+  /** Ship the template's worked examples alongside its rules. */
+  includeExamples: boolean;
+  /** Booru-tag mode with the explicit tag reference. */
+  directLanguage: boolean;
+  /** Send stored appearance tags for NPCs the recent scene mentions. */
+  injectNpcTags: boolean;
+  customPrompts: Record<string, string> | null;
+  customPromptsEnabled: boolean;
+}
+
+export interface BanListPrompts {
+  systemPrompt?: string;
+  userPrompt?: string;
+  thinkingPrompt?: string;
+  injectionTemplate?: string;
+}
+
+export interface StoryPlanPrompts {
+  systemPrompt?: string;
+  userPrompt?: string;
+  thinkingPrompt?: string;
+  injectionTemplate?: string;
+  trackerTemplate?: string;
+  unrestrictedBlock?: string;
 }
 
 export interface StoryPlanSettings {
@@ -142,12 +170,24 @@ export interface StoryPlanSettings {
   triggerMode: "manual" | "frequency";
   autoFreq: number;
   currentPlan: string;
+  /** Director settings — the standing brief the Story Maker writes against. */
+  contentRating: string;
+  pacing: string;
+  primaryGenre: string;
+  flavorTags: string[];
+  directorsNote: string;
+  unrestrictedContent: boolean;
+  /** Per-subsystem prompt overrides. Null means use the shipped defaults. */
+  customPrompts: StoryPlanPrompts | null;
+  customPromptsEnabled: boolean;
 }
 
 export interface NpcBankSettings {
   enabled: boolean;
   sendPortraitsToAi: boolean;
   npcs: NpcRecord[];
+  customPrompts: Record<string, string> | null;
+  customPromptsEnabled: boolean;
 }
 
 export interface MeguminProfile {
@@ -171,6 +211,8 @@ export interface MeguminProfile {
   userPronouns: "off" | "male" | "female";
   banList: string[];
   banListBackend: UtilityBackend;
+  banListCustomPrompts: BanListPrompts | null;
+  banListCustomPromptsEnabled: boolean;
   thinkEffort: "unspecified" | "100" | "250" | "450" | "custom";
   customThinkEffort: string;
   thinkingV2: boolean;
