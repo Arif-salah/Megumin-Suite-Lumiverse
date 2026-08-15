@@ -3759,7 +3759,21 @@ function npcField(key, label, fieldIcon, color, value) {
 }
 function preferredStyleForEngine(engineId) {
   const styles = state.logic?.directStyles || [];
-  const target = engineId === "v7-core" ? "dir_v7_core" : engineId === "v7-gentle" ? "dir_v7_gentle" : engineId.startsWith("v7") ? "dir_v7" : "";
+  let target = "";
+  if (engineId === "v9-lite")
+    target = "dir_v9lite";
+  else if (engineId.startsWith("v9"))
+    target = "dir_v9";
+  else if (engineId.startsWith("v8"))
+    target = "dir_v8";
+  else if (engineId === "v7.5")
+    target = "dir_v7.5";
+  else if (engineId === "v7-core")
+    target = "dir_v7_core";
+  else if (engineId === "v7-gentle")
+    target = "dir_v7_gentle";
+  else if (engineId.startsWith("v7"))
+    target = "dir_v7";
   return target ? styles.find((style) => style.id === target) || null : null;
 }
 function currentCotType() {

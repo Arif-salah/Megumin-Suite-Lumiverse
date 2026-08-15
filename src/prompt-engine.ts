@@ -170,7 +170,6 @@ export const REQUIRED_PLACEHOLDER_FEATURES = [
   ]),
   featureSpec("response-blocks", "Response Blocks", [
     { label: "info block hook", aliases: ["[[infoblock]]"] },
-    { label: "summary hook", aliases: ["[[summary]]"] },
     { label: "CYOA hook", aliases: ["[[cyoa]]"] },
     { label: "CYOA display hook", aliases: ["[[cyoa2]]"] },
     { label: "MVU hook", aliases: ["[[MVU]]"] },
@@ -376,7 +375,6 @@ function buildBaseDict(
     ["prefill", "prefill", true],
     ["think", "THINK", profile.thinkingV2],
     ["info", "infoblock", profile.blocks.includes("info")],
-    ["summary", "summary", profile.blocks.includes("summary")],
     ["cyoa", "cyoa", profile.blocks.includes("cyoa")],
     ["mvu", "MVU", profile.blocks.includes("mvu")],
     ["death", "death", profile.addons.includes("death")],
@@ -504,7 +502,6 @@ function buildBaseDict(
 
   dict.cyoa2 = dict.cyoa ? "[CYOA block here]" : "";
   dict.infoblock2 = dict.infoblock ? "[Info block here]" : "";
-  dict.summary2 = dict.summary ? "[Summary block here]" : "";
   dict.storytracker2 = dict.storytracker ? "[Story tracker here]" : "";
   dict.npc_inner_chatter2 = dict.npc_inner_chatter ? "[Npc inner chatter here]" : "";
 

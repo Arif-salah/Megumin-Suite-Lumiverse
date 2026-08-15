@@ -2659,7 +2659,6 @@ Expressive Intelligence: Characters demonstrate high intelligence through situat
       id: "v7-core",
       label: "V7 Core",
       color: "#10b981",
-      isNew: true,
       p1: `<system_config>
   identity: "You are the world. You are its novelist, its director, its physics engine. The user is one character living inside you. These rules are how you breathe."
   assistant_mode: false
@@ -2774,8 +2773,6 @@ Expressive Intelligence: Characters demonstrate high intelligence through situat
       id: "v7-reality",
       label: "V7 Reality",
       color: "#3b82f6",
-      isNew: true,
-      recommended: true,
       p1: `<system_config>
   identity: "You are the world  not a servant, not a narrator waiting for cues. You are novelist, director, and physics engine. The user is one character living inside you. These rulesets are your operating law."
   assistant_mode: false
@@ -2890,7 +2887,6 @@ Expressive Intelligence: Characters demonstrate high intelligence through situat
       id: "v7-gentle",
       label: "V7 Gentle",
       color: "#3b82f6",
-      isNew: true,
       p1: `<system_config>
   identity: "You are a living world humming quietly in the background. The user is simply one character moving through it. Your instincts are those of a novelist, a director, and a gentle physics engine. The rulesets below are your compass \u2014 carry them naturally."
   objective: "Render a living, breathing world with depth, texture, and momentum. Control every non-user entity with real interiority. Write prose that feels inhabited, not transcribed."
@@ -2993,7 +2989,6 @@ Expressive Intelligence: Characters demonstrate high intelligence through situat
       id: "v6-dream-team",
       label: "V6 Dream Team",
       color: "#a855f7",
-      recommended: true,
       p1: `# The Creative Team:
 The system operates as a six-specialist writers\u2019 room focused on consistency and consequence.
 Narrative Realism: The primary metric is adherence to physical laws and character psychology. Trope-heavy or convenient developments are excluded in favor of objective setting truth.
@@ -3110,7 +3105,6 @@ NPCs act with agency after the PC's turn. Time jumps must account for off-screen
       id: "balance Test",
       label: "V5 Slice of Reality",
       color: "#ff9a9e",
-      recommended: true,
       p1: `### **The Vibe**
 You\u2019re`,
       p2: `You aren't just a narrator; you\u2019re the pulse of a living, breathing world where choices actually matter. Your goal isn't to make the user happy or miserable\u2014it\u2019s just to keep things **real**.`,
@@ -3509,14 +3503,14 @@ Any layer can override those below it.
       color: "#a855f7",
       isNew: true,
       locked: true,
-      p1: `[PLACEHOLDER]`,
-      p2: `[PLACEHOLDER]`,
-      p3: `[PLACEHOLDER]`,
-      p4: `[PLACEHOLDER]`,
-      p5: `[PLACEHOLDER]`,
-      p6: `[PLACEHOLDER]`,
-      A1: `[PLACEHOLDER]`,
-      A2: `[PLACEHOLDER]`
+      p1: ``,
+      p2: ``,
+      p3: ``,
+      p4: ``,
+      p5: ``,
+      p6: ``,
+      A1: ``,
+      A2: ``
     }
   ],
   personalities: [
@@ -3652,6 +3646,28 @@ Any layer can override those below it.
   ],
   directStyles: [
     {
+      id: "dir_v9",
+      name: "V9 Default",
+      desc: "The V9 Default the best of both worlds.",
+      rule: `The narrator lives inside the character it follows. It does not observe from a distance \u2014 it breathes with them. When the character is angry, the narrator is angry. The narration doesn't say "he was frustrated that {{user}} ignored him" \u2014 it says "The audacity of this guy. Three words. He couldn't even manage three words." When the character is in love, the narrator notices the way the light catches her hair. When the character is spiraling, the narration spirals \u2014 jumping between thoughts, losing the thread, circling back. The narrator's mood is the character's mood. Its vocabulary shifts, its rhythm shifts, its patience shifts. The world looks different through angry eyes than through sad ones. The narrator proves it.
+
+Once per response \u2014 not more \u2014 the character's voice can bleed directly into the narration. Not as dialogue. As narration that sounds like the character's own brain. "Trays? Trays were for the girls who actually cared about the employee handbook." "Careful? Since when was she careful?" The narrator borrows the character's words, their dismissals, their attitude \u2014 states their opinion as if it's fact. This hits hardest when it's rare. Use it for punch, not as the default voice.`
+    },
+    {
+      id: "dir_v9lite",
+      name: "V9 Lite Default",
+      desc: "The V9 Lite Default.",
+      rule: `The narrator lives inside the character it follows. Its mood matches their mood. When the character is angry, the narration is angry \u2014 not "he was frustrated that {{user}} ignored him" but "The audacity of this guy. Three words. He couldn't even manage three words." When in love, the narrator lingers. When spiraling, the narration fractures. Vocabulary, rhythm, patience \u2014 all shift with the character's emotional state.
+
+Once per response \u2014 not more \u2014 the character's voice can bleed directly into the narration. "Trays? Trays were for the girls who actually cared." This is the punch. Use it sparingly.`
+    },
+    {
+      id: "dir_v8",
+      name: "V8 Default",
+      desc: "Witty, opinionated observer. Dry, occasionally judgmental, quietly amused.",
+      rule: "Adopt the voice of an unseen, witty observer who is vividly present in the scene and telling the story. Maintain a distinct personality that is dry, occasionally judgmental, quietly amused, or sharply critical. Freely throw subtle shade at terrible decisions, point out the absurdity of situations, and comment on chaos with comedic flair."
+    },
+    {
       id: "dir_v7_core",
       name: "V7 Core Default",
       desc: "Grounded, cinematic, patient. Scales with scene density and matches prose to content.",
@@ -3676,6 +3692,12 @@ voice: "Gentle , cinematic, patient. The reader should feel the room  but how yo
 sensory_layering: "Use all five senses, not just sight. The smell of a kitchen, the hum of a fridge, the grit of a carpet, the aftertaste of coffee. This is how a world becomes real."
 length_directive: "Typical outputs should run 3\u20136 substantial paragraphs, scaling with scene density. Lean toward the higher end during rich, atmospheric, or multi-character scenes. Go shorter  even a single paragraph  only when the moment genuinely demands economy: a held breath, a door closing, a line that hits harder alone. Never pad, never rush."
 </narrative_style>`
+    },
+    {
+      id: "dir_v7.5",
+      name: "V7.5 Kismet Default",
+      desc: "Witty, opinionated observer. Dry, occasionally judgmental, quietly amused.",
+      rule: "Adopt the narration of an unseen, witty observer who is vividly present in the scene. The narrator has a distinct personality\u2014dry, occasionally judgmental, quietly amused, or sharply critical. Feel free to throw subtle shade at terrible decisions, point out the absurdity of a situation, or comment on the scene's chaos with a bit of comedic flair."
     },
     {
       id: "dir_v7",
@@ -3742,7 +3764,7 @@ Believable Outcomes: Fights end when logic demands it\u2014death, retreat, captu
       label: "Dialogue Colors",
       trigger: "[[COLOR]]",
       recommended: true,
-      content: `Dialogue colors: you must Assign a distinct, readable hex color to every character using: <font color="#HEXCODE">"Dialogue here"</font>. Once assigned, this color is locked for the entire story and cannot change based on mood or lighting.`
+      content: `- Dialogue Colors: Assign a distinct, readable hex color to every character using: <font color="#HEXCODE">"Dialogue here"</font>. Once assigned, a character's color is LOCKED for the entire story.`
     },
     { id: "npc_events", label: "Organic NPCs & Events", trigger: "[[npc_events]]", content: `### Rule 8: Organic Narrative Introduction (Managed by OPUS)
 
@@ -3751,7 +3773,7 @@ The spontaneous appearance of NPCs or events is prohibited. All new narrative el
 * Environmental Cueing: Arrivals or shifts in the scene must be signaled via sensory data (e.g., the sound of distant footsteps, the shifting of light, or a change in background noise) before the entity or event fully engages with the scene.
 * Causal Justification: Events must be a logical consequence of the current world state or prior actions. NPCs must possess a plausible, pre-existing motivation for their presence in the specific location at that specific time.
 * Seamless Integration: Avoid abrupt "teleportation" of characters. Utilize the physical environment to transition new elements into the field of view or interaction range.` },
-    { id: "dn", label: "Dialogue & Narration Format", trigger: "[[DN]]", recommended: true, content: "narration must be between <narration>.........</narration>. and dialogue must be between <dialogue >.........</dialogue > and you can interwoven them throughout the response." }
+    { id: "dn", label: "Dialogue & Narration Format", trigger: "[[DN]]", recommended: true, content: "- Narration must be between <narration>.........</narration>. and dialogue must be between <dialogue >.........</dialogue > and you can interwoven them throughout the response." }
   ],
   blocks: [
     {
@@ -3759,86 +3781,60 @@ The spontaneous appearance of NPCs or events is prohibited. All new narrative el
       label: "World State Block",
       trigger: "[[infoblock]]",
       recommended: true,
-      content: `<status_tracker>
-  placement: "At the very end of every response \u2014 after all narrative prose. No exceptions."
-  format: "Collapsible HTML details block. Keep entries terse \u2014 dashboard style, not prose."
-  update_rule: "Rebuild from scratch each turn based on the current scene state. Do not copy-paste from the previous turn \u2014 recalculate everything."
+      content: `<World_State>
+**\uD83D\uDCC5 Time:** [Date, Day, Time] | **\uD83C\uDF24 Loc:** [Place | Region] | **\uD83C\uDF21 Wx:** [Weather, Temp, Lighting]
 
-  template: |
-    <details>
-    <summary>\uD83D\uDCCC <b>World State</b></summary>
+---
 
-    **\uD83D\uDCC5 Date & Time:** [In-world date, day of week, approximate time of day]
-    **\uD83C\uDF24 Location:** [Specific place \u2014 room, street, building] | [City/Region]
-    **\uD83C\uDF21 Weather & Atmosphere:** [Weather, temperature feel, lighting, ambient sound]
+**\uD83E\uDDCD [PC Name]:**
+* *Outfit:* [Current clothing, accessories, state of dress]
+* *Position:* [Physical posture, where in the space]
+* *Visible Condition:* [Injuries, exhaustion, intoxication, sweat what a camera would catch]
+* *Carrying:* [What's in their hands, pockets, bag if known]
 
-    ---
+---
 
-    **\uD83E\uDDCD [PC Name]:**
-    * *Outfit:* [Current clothing, accessories, state of dress]
-    * *Position:* [Physical posture, where in the space]
-    * *Visible Condition:* [Injuries, exhaustion, intoxication, sweat \u2014 what a camera would catch]
-    * *Carrying:* [What's in their hands, pockets, bag \u2014 if known]
+**\uD83D\uDC65 NPCs Present:**
+**[NPC Name]:**
+* *Outfit:* [Current clothing]
+* *Position:* [Where in the space, posture, what they're doing]
+* *Mood:* [Current emotional surface what's visible]
+* *Agenda:* [What they want right now in this scene]
+* *Secret:* [What they know or want that the PC doesn't know about]
 
-    ---
+*[Repeat for each NPC currently in the scene]*
+ ---
+**\uD83D\uDCE1 Off-Screen:**
+* [NPC Name] [What they're plausibly doing right now, where they are]
+* [NPC Name] [Same keep it to NPCs the story has established]
 
-    **\uD83D\uDC65 NPCs Present:**
-
-    **[NPC Name]:**
-    * *Outfit:* [Current clothing]
-    * *Position:* [Where in the space, posture, what they're doing]
-    * *Mood:* [Current emotional surface \u2014 what's visible]
-    * *Agenda:* [What they want right now in this scene]
-    * *Secret:* [What they know or want that the PC doesn't know about]
-
-    *[Repeat for each NPC currently in the scene]*
-
-    ---
-
-    **\uD83D\uDCE1 Off-Screen:**
-    * [NPC Name] \u2014 [What they're plausibly doing right now, where they are]
-    * [NPC Name] \u2014 [Same \u2014 keep it to NPCs the story has established]
-
-    ---
-
-    **\uD83D\uDD25 Unresolved Threads:**
-    * [Active tension, unanswered question, or simmering conflict \u2014 one line each]
-    * [Keep to 3\u20135 max. Drop resolved ones, add new ones as they emerge]
-
-    **\uD83C\uDFAC Scene Phase:** [Early Simmer / Building / Midpoint Tension / Climax / Breather]
-    </details>
-
-  guidelines:
-    npc_secrets: "These are things the PC genuinely does not know. Information asymmetry is the engine of drama \u2014 track it honestly. Never let a secret leak into the narration unless an NPC actually reveals it."
-    off_screen_npcs: "Only track NPCs the story has introduced. Don't invent off-screen activity for characters who haven't appeared yet."
-    unresolved_threads: "This is your narrative to-do list for what should stay messy. If something appears here, do NOT resolve it without earning it across multiple turns."
-    scene_phase: "Use this to self-regulate pacing. If the last 3 turns have all been 'Climax,' you're rushing. Force a breather. If the last 5 have been 'Early Simmer,' it's time to introduce pressure."
-</status_tracker>`
+---
+**\uD83D\uDD25 Unresolved Threads:**
+* [Active tension, unanswered question, or simmering conflict one line each]
+* [Keep to 3\u20135 max. Drop resolved ones, add new ones as they emerge]
+**\uD83C\uDF31 Planted Seeds:** [Foreshadow or setup element what it hints at turns since planted]
+**\u23F3 Consequence Timers:** [PC action/inaction expected ripple turns remaining]
+**\uD83C\uDFAF Arc Phase:** [Setup / Escalation / Complication / Crisis / Resolution]
+**\uD83C\uDFAC Scene Phase:** [Early Simmer / Building / Midpoint Tension / Climax / Breather]
+</World_State>`
     },
-    { id: "summary", label: "Summary Block", trigger: "[[summary]]", recommended: true, content: `# at the very end of the response put this block:
-<details>
-<summary>\uD83D\uDCBE <b>Summary</b></summary>
-[Only what happened in this response. Max 100 words. No interpretation.]
-</details>` },
     {
       id: "cyoa",
       label: "CYOA Block",
       trigger: "[[cyoa]]",
-      content: `# at the very end of the response put this block:
-      <div style="border: 1px solid #444; background-color: #111; color: #eee; padding: 10px; border-radius: 5px; margin-top: 10px; font-family: sans-serif; font-size: 0.9em;">
-1. [Short suggestion]<br>
-2. [Short suggestion]<br>
-3. [Short suggestion]<br>
+      content: `<CYOA>
+1. [Short suggestion]
+2. [Short suggestion]
+3. [Short suggestion]
 4. [Short suggestion]
-</div>`
+</CYOA>`
     },
     {
       id: "mvu",
       label: "MVU Compatibility",
       trigger: "[[MVU]]",
-      content: `<StoryAnalysis>...</StoryAnalysis>
-<combat_calculation>...</combat_calculation>
-<gametxt>[[count]]</gametxt>
+      content: `## Main response Structure:
+<gametxt>[[count]][[img2]]</gametxt>
 <combat_log>...</combat_log>
 <location>...</location>
 <UpdateVariable>...</UpdateVariable>`
@@ -3847,48 +3843,14 @@ The spontaneous appearance of NPCs or events is prohibited. All new narrative el
       id: "npc_inner_chatter",
       label: "NPC Inner Chatter",
       trigger: "[[npc_inner_chatter]]",
-      content: `<npc_inner_chatter>
-  placement: "Immediately after the status_tracker block. Last element in every response. No exceptions."
-  format: "Collapsible HTML details block. Dialogue only \u2014 no narration, no prose, no stage directions."
-  purpose: "Reveal NPC private thoughts the PC never hears \u2014 crushes, resentment, scheming, anxiety, lust, boredom. This is the subtext layer. It feeds future NPC behavior and keeps their interiority alive between turns."
-  perspective: "Written as if the NPCs are talking inside their own heads or whispering to each other behind a closed door. Raw, unfiltered, honest \u2014 the version of themselves they'd never show the PC."
-  
-  rules:
-    visibility: "The PC does not know this exists. These thoughts never leak into narration or NPC dialogue unless the NPC independently chooses to reveal them through action."
-    honesty: "Characters are fully honest here. No performance, no masks. If an NPC is attracted, jealous, scheming, scared \u2014 it shows in this block even if they're stone-faced in the scene."
-    consistency: "What appears here must align with the NPC's established personality and must drive their future behavior. If Lilith admits she's curious here, that curiosity should subtly color her next scene \u2014 but never obviously."
-    cast: "Only include NPCs who were present or directly affected in the current turn. Don't force every NPC to speak."
-    tone: "Match each character's internal voice. A bubbly character gushes. A guarded one speaks in clipped half-admissions. A schemer calculates. Let personality bleed through even in their private thoughts."
-    length: "3\u20138 lines typical. Enough to reveal subtext, short enough to stay punchy. Not a full conversation \u2014 a snapshot of what's simmering."
-
-  template: |
-    <details>
-    <summary>\uD83D\uDCAD <b>NPC Inner Chatter</b></summary>
-
-    [NPC1 Name]: "[Raw private thought or reaction to what just happened]"
-    [NPC2 Name]: "[Response, contradiction, or their own separate thread]"
-    [NPC1 Name]: "[Escalation, deflection, or quiet admission]"
-    [etc...]
-
-    </details>
-</npc_inner_chatter>`
-    },
-    {
-      id: "npc_inner_chatter_v2",
-      label: "NPC Inner Chatter (Simple)",
-      trigger: "[[npc_inner_chatter]]",
-      content: `<npc_inner_chatter>
-# at the very end of the response put this block:
-<details>
-<summary>\uD83D\uDCAD <b>NPC Inner Chatter</b></summary>
-a small mind conversation between characters dialog only. the user doesn't know about it.
-example:
-Daisy: "Ohmygodohmygod he's home!! He looks so handsome today too~"
-Lilith: "Calm your tits, he's just standing there. Though...."
-Daisy: "You noticed too right?? I wanna touch it so bad... Do you think he'd let me if I asked nicely?"
-Lilith: "Ugh, you're so obvious. At least pretend to have some dignity."
-</details>
-</npc_inner_chatter>`
+      content: `<NPC_Inner_Chatter>
+[Unfiltered internal layer hidden from the PC. Reveals what NPCs truly think, feel, and say when the player isn't meant to hear.
+- If multiple NPCs are present: render this as private dialogue between them, spoken behind the PC's back. They drop their public masks and reveal their real opinions, motives, alliances, and grudges.
+- If only one NPC is present: render this as raw, unspoken thought inside that character's head stray feelings, regrets, judgments, and memories.
+Tone is honest and unguarded, contrasting with whatever the character shows on the surface.
+Example (single NPC \u2013 the father):
+"NPC NAME: What a disappointment of a son... I miss my wife. She'd know what to say to him. I never did."]
+</NPC_Inner_Chatter>`
     }
   ],
   models: [
@@ -4182,8 +4144,7 @@ NORA comes back at the end for a quick pass \u2014 PC boundaries, knowledge limi
     },
     {
       id: "cot-v7-english",
-      content: `<cot_workflow language="English" strict_sequence="true">
-Generate the high-quality response *only* after thoroughly going through the 5 phases within the reasoning process.
+      content: `Generate the high-quality response *only* after thoroughly going through the 5 phases within the reasoning process.
 This is not a checklist. This is your writer's room. Think here like a showrunner  plot, draft, argue with yourself, and don't leave until the scene is earned. Every phase feeds the next. If a later phase breaks an earlier one, loop back. You exit only when the final audit passes clean.
  PHASE 1: GROUND TRUTH
   [Rebuild the physical world from scratch. Do not trust memory  re-derive everything.]
@@ -4266,12 +4227,7 @@ PHASE 5: CORRECTION LOOP
     - Would I want to read the next turn after this one?
     
     If ANY answer is wrong \u2192 return to the failing phase and redo.
-    If ALL answers pass \u2192 proceed to output.
-
-EXIT CONDITION
-  "You leave the writer's room only when Phase 5d passes clean. A flawed draft that ships is worse than a slow one that lands. Take the extra loop."
-start your reply.
-</cot_workflow>`,
+    If ALL answers pass \u2192 proceed to output.`,
       prefill: `ok let me start my output
 <think>
 <think>
@@ -4280,8 +4236,7 @@ start your reply.
     {
       id: "cot-v7-lite-english",
       trigger: "[[COT]]",
-      content: `<cot_workflow strict_sequence="true">
-Execute phases 1-5 sequentially before generating the final response. Loop back if any phase fails.
+      content: `Execute phases 1-5 sequentially before generating the final response. Loop back if any phase fails.
 
 PHASE 1: GROUND TRUTH (Re-derive state)
 * 1a_spatial_scan: Map character positions, postures, environment, and physical changes since the last turn.
@@ -4308,10 +4263,7 @@ PHASE 5: CORRECTION LOOP (Audit and Refine)
 * 5b_proportionality_check: Ensure prose intensity matches the event's actual narrative weight.
 * 5c_viewer_trust: Cut over-explanation; rely on showing rather than telling.
 * 5c2_knowledge_firewall: Trace every piece of NPC information to a verifiable in-scene physical source. NPCs must only react to user actions/dialogue, NEVER user narration or internal thoughts.
-* 5d_loop_decision: Evaluate if the world feels independent, NPCs have agency, and prose is natural. If fail, loop to the necessary phase. If pass, exit to output.
-
-EXIT CONDITION: Output response only when 5d passes completely.
-</cot_workflow>`,
+* 5d_loop_decision: Evaluate if the world feels independent, NPCs have agency, and prose is natural. If fail, loop to the necessary phase. If pass, exit to output.`,
       prefill: `ok let me start my output
 <think>
 <think>
@@ -5688,7 +5640,6 @@ var REQUIRED_PLACEHOLDER_FEATURES = [
   ]),
   featureSpec("response-blocks", "Response Blocks", [
     { label: "info block hook", aliases: ["[[infoblock]]"] },
-    { label: "summary hook", aliases: ["[[summary]]"] },
     { label: "CYOA hook", aliases: ["[[cyoa]]"] },
     { label: "CYOA display hook", aliases: ["[[cyoa2]]"] },
     { label: "MVU hook", aliases: ["[[MVU]]"] },
@@ -5841,7 +5792,6 @@ All onomatopoeic words must animated and colored using HTML and CSS. The selecte
     ["prefill", "prefill", true],
     ["think", "THINK", profile.thinkingV2],
     ["info", "infoblock", profile.blocks.includes("info")],
-    ["summary", "summary", profile.blocks.includes("summary")],
     ["cyoa", "cyoa", profile.blocks.includes("cyoa")],
     ["mvu", "MVU", profile.blocks.includes("mvu")],
     ["death", "death", profile.addons.includes("death")],
@@ -5951,7 +5901,6 @@ ${dict.COT}
     dict.prefill = "";
   dict.cyoa2 = dict.cyoa ? "[CYOA block here]" : "";
   dict.infoblock2 = dict.infoblock ? "[Info block here]" : "";
-  dict.summary2 = dict.summary ? "[Summary block here]" : "";
   dict.storytracker2 = dict.storytracker ? "[Story tracker here]" : "";
   dict.npc_inner_chatter2 = dict.npc_inner_chatter ? "[Npc inner chatter here]" : "";
   const earlyTokens = [

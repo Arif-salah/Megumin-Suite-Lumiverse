@@ -1120,3 +1120,58 @@ describe("Megumin image prompt prefixes", () => {
     expect(applyPromptPrefixes(profile.imageGen, "1girl")).toBe("1girl");
   });
 });
+
+describe("Megumin prompt corpus", () => {
+  const logic = getLogic() as unknown as Record<string, Array<Record<string, string>>>;
+
+  test("the corpus is the V9 beta one, not the V7 originals", () => {
+    // World State and Inner Chatter were rewritten for V9 and are markedly shorter.
+    // The V7 bodies carried a <status_tracker> wrapper; the V9 ones do not.
+    const info = logic.blocks.find((b) => b.id === "info")!;
+    const chatter = logic.blocks.find((b) => b.id === "npc_inner_chatter")!;
+
+    expect(info.content).not.toContain("<status_tracker>");
+    expect(info.content.length).toBeLessThan(2000);
+    expect(chatter.content).not.toContain("placement:");
+    expect(chatter.content.length).toBeLessThan(1500);
+  });
+
+  test("the V9 director styles are present", () => {
+    const ids = logic.directStyles.map((s) => s.id);
+    for (const id of ["dir_v9", "dir_v9lite", "dir_v8", "dir_v7.5"]) expect(ids).toContain(id);
+  });
+
+  test("blocks the V9 corpus dropped are gone, and nothing still asks for them", () => {
+    const ids = logic.blocks.map((b) => b.id);
+    expect(ids).not.toContain("summary");
+    expect(ids).not.toContain("npc_inner_chatter_v2");
+    // Nothing may require a preset hook the corpus can no longer fill.
+    expect(REQUIRED_PLACEHOLDER_FEATURES.some((f) => f.placeholders.includes("[[summary]]"))).toBe(false);
+  });
+
+  test("a dropped block's anchor is still swept from a preset that carries it", () => {
+    const built = buildPromptMessages(
+      [{ role: "system", content: "A\n[[summary]]\n[[summary2]]\nB" }],
+      [],
+      clone(DEFAULT_PROFILE),
+      [],
+      context
+    );
+    expect(built.messages[0].content).toBe("A\nB");
+  });
+
+  test("every block's trigger token is one the engine actually fills", () => {
+    // A block whose trigger nothing populates is a block that never reaches the model.
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blocks = logic.blocks.map((b) => b.id);
+    const joined = buildPromptMessages(
+      [{ role: "system", content: logic.blocks.map((b) => b.trigger).join("\n") }],
+      [],
+      profile,
+      [],
+      context
+    ).messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+    expect(joined.trim().length).toBeGreaterThan(200);
+    expect(joined).not.toMatch(/\[\[[^\]]+\]\]/);
+  });
+});
