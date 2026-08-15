@@ -9,7 +9,7 @@ import type {
   PromptBuildResult
 } from "./types";
 import { cleanChatText, npcBuildText } from "./text";
-import { COMPACT_WORLD_STATE, buildBlocksEnvelope } from "./blocks";
+import { COMPACT_WORLD_STATE, buildBlocksEnvelope, syncLegacyBlockIds } from "./blocks";
 import { buildConfigBlock } from "./story-config";
 import { buildStoryPlanInjection } from "./story-director";
 import { banListPrompts } from "./ban-list";
@@ -270,13 +270,16 @@ function presetUsesEnvelope(incoming: LlmMessage[]): boolean {
 }
 
 function buildBaseDict(
-  profile: MeguminProfile,
+  rawProfile: MeguminProfile,
   customEngines: EngineMode[],
   chatMessages: ChatMessage[],
   context: ChatContext,
   usesEnvelope = false
 ): Record<string, string> {
   const dict: Record<string, string> = {};
+  // The stack is the source of truth for which block bodies are needed, so the
+  // legacy list is reconciled from it before anything reads profile.blocks.
+  const profile: MeguminProfile = { ...rawProfile, blocks: syncLegacyBlockIds(rawProfile) };
   const activeEngine = selectedEngine(profile, customEngines);
   const allModes = allEngines(customEngines);
   const isCustom = !logic.modes.some((mode) => mode.id === activeEngine.id);

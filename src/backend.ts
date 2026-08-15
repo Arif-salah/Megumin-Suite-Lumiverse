@@ -11,7 +11,7 @@ import type { ChatContext, ChatMessage, EngineMode, MeguminProfile, NpcRecord, R
 import { cleanAIOutput, cleanChatText, escapeXmlAttr, extractNpcBlocks, npcBuildText } from "./text";
 import { patchComfyWorkflow } from "./image-workflow";
 import { buildStoryPlanMessages, extractDirective } from "./story-director";
-import { buildImagePromptMessages, extractImagePrompt } from "./image-prompt";
+import { applyPromptPrefixes, buildImagePromptMessages, extractImagePrompt } from "./image-prompt";
 import { buildBanListMessages, parseBanListReply } from "./ban-list";
 
 declare const spindle: any;
@@ -563,8 +563,11 @@ async function resolveImageConnection(profile: MeguminProfile, userId?: string):
   }
 }
 
-async function generateImageForChat(scope: string, chatId: string, prompt: string, attachToMessageId?: string, userId?: string): Promise<{ imageId?: string; imageUrl?: string; prompt: string }> {
+async function generateImageForChat(scope: string, rawChatId: string, rawPrompt: string, attachToMessageId?: string, userId?: string): Promise<{ imageId?: string; imageUrl?: string; prompt: string }> {
   const profile = await loadProfile(scope, userId);
+  const chatId = rawChatId;
+  // LoRA triggers and the quality prefix ride ahead of the scene description.
+  const prompt = applyPromptPrefixes(profile.imageGen, rawPrompt);
   const connection = await resolveImageConnection(profile, userId);
   const parameters: Record<string, unknown> = {
     width: profile.imageGen.imgWidth,

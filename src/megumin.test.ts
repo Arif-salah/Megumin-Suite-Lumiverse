@@ -6,8 +6,9 @@ import { extractNpcBlocks } from "./text";
 import { patchComfyWorkflow } from "./image-workflow";
 import { DEFAULT_PROMPTS } from "./default-prompts";
 import { buildDirectorSettings, buildStoryPlanMessages, extractDirective } from "./story-director";
-import { buildImageInjection, extractImagePrompt, relevantNpcImageTags, templateKey, templateParts } from "./image-prompt";
+import { applyPromptPrefixes, buildImageInjection, extractImagePrompt, relevantNpcImageTags, templateKey, templateParts } from "./image-prompt";
 import { parseBanListReply } from "./ban-list";
+import { syncLegacyBlockIds } from "./blocks";
 import { DEFAULT_PROFILE } from "./defaults";
 import type { ChatContext, ChatMessage, EngineMode, LlmMessage } from "./types";
 
@@ -1046,5 +1047,76 @@ describe("Megumin UI wiring", () => {
       return !frontendSource.includes(`"${name}":`);
     });
     expect(missing).toEqual([]);
+  });
+});
+
+describe("Megumin block stack sync", () => {
+  test("adding a block to the stack actually emits it", () => {
+    // The block bodies come from dict tokens that only populate when the matching
+    // legacy id is in profile.blocks. Without the sync the envelope came out empty
+    // and the block silently never reached the model.
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blockStack.order = ["cyoa", "world", "chatter", "bonds"];
+    expect(profile.blocks).toEqual([]);
+
+    const built = buildPromptMessages([{ role: "system", content: "[[blocks]]" }], [], profile, [], context);
+    const joined = built.messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n");
+
+    expect(joined).toContain("<Blocks>");
+    for (const tag of ["<CYOA>", "<World_State>", "<NPC_Inner_Chatter>", "<Bonds>"]) {
+      expect(joined).toContain(tag);
+    }
+  });
+
+  test("the sync reconciles from the stack without disturbing unowned ids", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blocks = ["mvu", "summary", "info"];
+    profile.blockStack.order = ["chatter"];
+    const next = syncLegacyBlockIds(profile);
+
+    // mvu/summary are not owned by any block, so they survive untouched.
+    expect(next).toContain("mvu");
+    expect(next).toContain("summary");
+    // chatter is in the stack, so its legacy id is added.
+    expect(next).toContain("npc_inner_chatter");
+    // world is not in the stack, so its legacy id goes.
+    expect(next).not.toContain("info");
+  });
+
+  test("an empty stack leaves the legacy block list untouched", () => {
+    // V7 presets drive blocks entirely through profile.blocks.
+    const profile = clone(DEFAULT_PROFILE);
+    profile.blocks = ["info", "cyoa"];
+    expect(syncLegacyBlockIds(profile)).toEqual(["info", "cyoa"]);
+  });
+});
+
+describe("Megumin image prompt prefixes", () => {
+  test("LoRA triggers are injected only for slots that have a LoRA", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.imageGen.selectedLora = "anime_style.safetensors";
+    profile.imageGen.loraTrigger1 = "anime style";
+    // Slot 2 has trigger words but no LoRA, so it contributes nothing.
+    profile.imageGen.loraTrigger2 = "orphan trigger";
+    profile.imageGen.selectedLora3 = "detail.safetensors";
+    profile.imageGen.loraTrigger3 = "ultra detailed";
+
+    const out = applyPromptPrefixes(profile.imageGen, "1girl, red hair");
+    expect(out).toBe("anime style, ultra detailed, 1girl, red hair");
+    expect(out).not.toContain("orphan trigger");
+  });
+
+  test("the prefix leads, then the triggers, then the scene", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    profile.imageGen.promptPrefix = "score_9, masterpiece";
+    profile.imageGen.selectedLora = "x.safetensors";
+    profile.imageGen.loraTrigger1 = "anime style";
+
+    expect(applyPromptPrefixes(profile.imageGen, "1girl")).toBe("score_9, masterpiece, anime style, 1girl");
+  });
+
+  test("nothing is prepended when no LoRA or prefix is set", () => {
+    const profile = clone(DEFAULT_PROFILE);
+    expect(applyPromptPrefixes(profile.imageGen, "1girl")).toBe("1girl");
   });
 });

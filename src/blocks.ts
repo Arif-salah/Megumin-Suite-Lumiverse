@@ -363,3 +363,42 @@ export const STAT_FIELD_TYPES: Array<{ v: StatField["type"]; label: string; hint
     { v: "text", label: "Text", hint: "a short line of prose" },
     { v: "list", label: "List", hint: "comma separated items" }
 ];
+
+/**
+ * Reconciles the block stack with the legacy `profile.blocks` list.
+ *
+ * A block's body comes from a dict token (World State reads `infoblock`, Inner
+ * Chatter reads `npc_inner_chatter`), and those tokens are only populated when
+ * the matching legacy id is in `profile.blocks`. Adding a block to the stack
+ * without this leaves its body empty, `buildBlocksEnvelope` skips it, and the
+ * envelope comes out empty — the block silently never reaches the model.
+ *
+ * Returns the reconciled list rather than mutating, so prompt assembly can derive
+ * it for any profile without side effects.
+ */
+export function syncLegacyBlockIds(profile: MeguminProfile): string[] {
+  const stack = profile.blockStack;
+  if (!stack) return profile.blocks || [];
+
+  // An empty stack leaves the legacy list alone. The ST build reconciles
+  // unconditionally, but there the stack is the only way to pick blocks; this port
+  // still supports the V7 presets, where `profile.blocks` is the whole mechanism
+  // and an empty stack would otherwise wipe every block the user had turned on.
+  if (!stack.order.length) return profile.blocks || [];
+
+  const owned = BLOCK_REGISTRY.flatMap((b) => b.legacyIds || []);
+  const had = profile.blocks || [];
+
+  // Anything the stack does not own (mvu, summary) is left exactly as it was.
+  const next = had.filter((id) => !owned.includes(id));
+
+  for (const block of BLOCK_REGISTRY) {
+    if (!block.legacyIds?.length) continue;
+    if (!stack.order.includes(block.id)) continue;
+    // Keep the variant already chosen (npc_inner_chatter_v2 over the full one)
+    // rather than resetting the reader's pick every save.
+    next.push(block.legacyIds.find((id) => had.includes(id)) || block.legacyIds[0]);
+  }
+
+  return [...new Set(next)];
+}

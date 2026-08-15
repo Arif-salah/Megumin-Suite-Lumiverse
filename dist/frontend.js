@@ -480,6 +480,11 @@ var faMicrochip = {
   iconName: "microchip",
   icon: [512, 512, [], "f2db", "M176 24c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 40c-35.3 0-64 28.7-64 64l-40 0c-13.3 0-24 10.7-24 24s10.7 24 24 24l40 0 0 56-40 0c-13.3 0-24 10.7-24 24s10.7 24 24 24l40 0 0 56-40 0c-13.3 0-24 10.7-24 24s10.7 24 24 24l40 0c0 35.3 28.7 64 64 64l0 40c0 13.3 10.7 24 24 24s24-10.7 24-24l0-40 56 0 0 40c0 13.3 10.7 24 24 24s24-10.7 24-24l0-40 56 0 0 40c0 13.3 10.7 24 24 24s24-10.7 24-24l0-40c35.3 0 64-28.7 64-64l40 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-40 0 0-56 40 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-40 0 0-56 40 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-40 0c0-35.3-28.7-64-64-64l0-40c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 40-56 0 0-40c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 40-56 0 0-40zM160 128l192 0c17.7 0 32 14.3 32 32l0 192c0 17.7-14.3 32-32 32l-192 0c-17.7 0-32-14.3-32-32l0-192c0-17.7 14.3-32 32-32zm16 48l0 160 160 0 0-160-160 0z"]
 };
+var faCoins = {
+  prefix: "fas",
+  iconName: "coins",
+  icon: [512, 512, [], "f51e", "M128 96l0-16c0-44.2 86-80 192-80S512 35.8 512 80l0 16c0 30.6-41.3 57.2-102 70.7-2.4-2.8-4.9-5.5-7.4-8-15.5-15.3-35.5-26.9-56.4-35.5-41.9-17.5-96.5-27.1-154.2-27.1-21.9 0-43.3 1.4-63.8 4.1-.2-1.3-.2-2.7-.2-4.1zM432 353l0-46.2c15.1-3.9 29.3-8.5 42.2-13.9 13.2-5.5 26.1-12.2 37.8-20.3l0 15.4c0 26.8-31.5 50.5-80 65zm0-96l0-33c0-4.5-.4-8.8-1-13 15.5-3.9 30-8.6 43.2-14.2s26.1-12.2 37.8-20.3l0 15.4c0 26.8-31.5 50.5-80 65zM0 240l0-16c0-44.2 86-80 192-80s192 35.8 192 80l0 16c0 44.2-86 80-192 80S0 284.2 0 240zm384 96c0 44.2-86 80-192 80S0 380.2 0 336l0-15.4c11.6 8.1 24.5 14.7 37.8 20.3 41.9 17.5 96.5 27.1 154.2 27.1s112.3-9.7 154.2-27.1c13.2-5.5 26.1-12.2 37.8-20.3l0 15.4zm0 80.6l0 15.4c0 44.2-86 80-192 80S0 476.2 0 432l0-15.4c11.6 8.1 24.5 14.7 37.8 20.3 41.9 17.5 96.5 27.1 154.2 27.1s112.3-9.7 154.2-27.1c13.2-5.5 26.1-12.2 37.8-20.3z"]
+};
 var faArrowDown = {
   prefix: "fas",
   iconName: "arrow-down",
@@ -656,7 +661,13 @@ var DEFAULT_PROFILE = {
     directLanguage: false,
     injectNpcTags: false,
     customPrompts: null,
-    customPromptsEnabled: false
+    customPromptsEnabled: false,
+    loraTrigger1: "",
+    loraTrigger2: "",
+    loraTrigger3: "",
+    loraTrigger4: "",
+    loraTriggersMap: {},
+    promptPrefix: ""
   },
   npcBank: {
     enabled: false,
@@ -695,7 +706,11 @@ function mergeProfile(raw) {
     ...input.storyPlan || {},
     flavorTags: Array.isArray(input.storyPlan?.flavorTags) ? input.storyPlan.flavorTags : []
   };
-  merged.imageGen = { ...base.imageGen, ...input.imageGen || {} };
+  merged.imageGen = {
+    ...base.imageGen,
+    ...input.imageGen || {},
+    loraTriggersMap: input.imageGen?.loraTriggersMap || {}
+  };
   merged.userWordCount = String(input.userWordCount ?? base.userWordCount);
   merged.userLanguage = String(input.userLanguage ?? base.userLanguage);
   merged.customThinkEffort = String(input.customThinkEffort ?? base.customThinkEffort);
@@ -1236,6 +1251,24 @@ var STAT_FIELD_TYPES = [
   { v: "text", label: "Text", hint: "a short line of prose" },
   { v: "list", label: "List", hint: "comma separated items" }
 ];
+function syncLegacyBlockIds(profile) {
+  const stack = profile.blockStack;
+  if (!stack)
+    return profile.blocks || [];
+  if (!stack.order.length)
+    return profile.blocks || [];
+  const owned = BLOCK_REGISTRY.flatMap((b) => b.legacyIds || []);
+  const had = profile.blocks || [];
+  const next = had.filter((id) => !owned.includes(id));
+  for (const block of BLOCK_REGISTRY) {
+    if (!block.legacyIds?.length)
+      continue;
+    if (!stack.order.includes(block.id))
+      continue;
+    next.push(block.legacyIds.find((id) => had.includes(id)) || block.legacyIds[0]);
+  }
+  return [...new Set(next)];
+}
 
 // src/story-director.ts
 var SD_GENRES = {
@@ -1343,15 +1376,15 @@ var MEGUMIN_PARITY_LABELS = {
 var tabs = [
   { title: "Core Engine", sub: "Choose the core ruleset that drives all NPC behavior and world logic.", short: "Engine", icon: "fa-server", color: "#f59e0b", render: renderEngines },
   { title: "Persona & Toggles", sub: "Define the personality and extra toggles.", short: "Persona", icon: "fa-user-astronaut", color: "#ec4899", render: renderPersona },
-  { title: "Writing Style", sub: "Apply a prebuilt style, generate one with AI, or build your own.", short: "Style", icon: "fa-pen-nib", color: "#a855f7", render: renderStyle },
-  { title: "Story Config", sub: "Standing settings for this story. Genre, tone, pacing, difficulty.", short: "Config", icon: "fa-sliders", color: "#eab308", render: renderStoryConfig },
-  { title: "Global Settings", sub: "Set response length, output language, and how the AI addresses you.", short: "Global", icon: "fa-earth-americas", color: "#3b82f6", render: renderGlobalSettings },
+  { title: "Story Config", sub: "Set the standing rules of the story, then pick the prose style that carries them.", short: "Config", icon: "fa-sliders", color: "#eab308", render: renderStoryConfig },
+  { title: "Global Toggles & Blocks", sub: "Configure global parameters, add-ons, and UI tracker blocks.", short: "Global", icon: "fa-earth-americas", color: "#3b82f6", render: renderGlobalSettings },
   { title: "Add-ons & Blocks", sub: "Attach extra modules that appear at the end of every response.", short: "Blocks", icon: "fa-puzzle-piece", color: "#10b981", render: renderBlocks },
   { title: "Chain of Thought", sub: "Control the AI's internal reasoning process before it writes.", short: "Thinking", icon: "fa-brain", color: "#8b5cf6", render: renderThinking },
   { title: "Story Planner", sub: "Generate and track future plot developments.", short: "Story", icon: "fa-map", color: "#f59e0b", render: renderStory },
   { title: "Dynamic Ban List", sub: "Scan and ban repetitive AI phrases.", short: "Ban", icon: "fa-ban", color: "#ef4444", render: renderBanList },
   { title: "Image Generation", sub: "Wire up ComfyUI to auto-generate scene images during roleplay.", short: "Image", icon: "fa-image", color: "#06b6d4", render: renderImage },
-  { title: "NPCs Bank", sub: "Automatically extract and track significant NPCs in the story.", short: "NPCs", icon: "fa-address-book", color: "#f43f5e", render: renderNpc }
+  { title: "NPCs Bank", sub: "Automatically extract and track significant NPCs in the story.", short: "NPCs", icon: "fa-address-book", color: "#f43f5e", render: renderNpc },
+  { title: "Global Settings", sub: "Extension preferences and about info.", short: "Settings", icon: "fa-gear", color: "#64748b", render: renderSettings }
 ];
 var devTab = { title: "Dev Engine Builder", sub: "Clone, edit, and save custom Megumin engine blocks.", short: "Dev", icon: "fa-code", color: "#a855f7", render: renderDev };
 function setup(ctx) {
@@ -2221,6 +2254,7 @@ ${insights}` : insights;
         state.profile.blockStack.order.unshift(id);
       else
         state.profile.blockStack.order.push(id);
+      state.profile.blocks = syncLegacyBlockIds(state.profile);
       saveProfileSoon();
       render();
       return;
@@ -2228,6 +2262,7 @@ ${insights}` : insights;
     if (action === "blk-remove") {
       const id = el.dataset.id || "";
       state.profile.blockStack.order = state.profile.blockStack.order.filter((item) => item !== id);
+      state.profile.blocks = syncLegacyBlockIds(state.profile);
       saveProfileSoon();
       render();
       return;
@@ -2241,6 +2276,7 @@ ${insights}` : insights;
       if (at < 0 || to < 0 || to >= order.length)
         return;
       order.splice(to, 0, ...order.splice(at, 1));
+      state.profile.blocks = syncLegacyBlockIds(state.profile);
       saveProfileSoon();
       render();
       return;
@@ -2261,6 +2297,7 @@ ${insights}` : insights;
       const id = "custom_" + Date.now().toString(36);
       state.profile.blockStack.custom.push({ id, name: name.trim(), tag, content: "" });
       state.profile.blockStack.order.push(id);
+      state.profile.blocks = syncLegacyBlockIds(state.profile);
       saveProfileSoon();
       render();
       return;
@@ -2795,7 +2832,9 @@ function renderStoryConfig() {
       <div class="cfg-fields ${cfg.enabled ? "" : "disabled"}">
         ${storyConfigFields.map(fieldRow).join("")}
       </div>
-    </div>`;
+    </div>
+
+    ${renderStyle()}`;
 }
 function renderStatFieldEditor(def) {
   const cfg = state.profile.statBlocks[def.id] || { fields: [] };
@@ -3237,8 +3276,14 @@ function renderImage() {
       <div style="display: flex; gap: 10px;"><div style="flex:1;"><div class="mini-label">Seed (-1 for random)</div><input type="number" id="ig_seed" class="ps-modern-input" data-bind="imageGen.customSeed" value="${ig.customSeed}" style="padding: 8px; font-size: 0.8rem;" /></div><div style="flex:2;"><div class="mini-label">Negative Prompt Override</div><input type="text" id="ig_neg" class="ps-modern-input" data-bind="imageGen.customNegative" value="${escapeHtml(ig.customNegative)}" style="padding: 8px; font-size: 0.8rem;" /></div></div>
     </div>
     <div class="mtab-panel">
+      <div class="mtab-panel-title gold">${icon("fa-align-left")} Prompt Prefix</div>
+      <input type="text" id="ig_prefix" class="ps-modern-input" data-bind="imageGen.promptPrefix" value="${escapeHtml(ig.promptPrefix || "")}" placeholder="e.g. score_9, score_8_up, masterpiece..." style="padding: 8px; font-size: 0.8rem;" />
+      <div class="mtab-callout">${icon("fa-circle-info")}<span>Prepended ahead of everything else, including the LoRA trigger words.</span></div>
+    </div>
+    <div class="mtab-panel">
       <div class="mtab-panel-title purple">${icon("fa-flask")} LoRA Lab</div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">${[1, 2, 3, 4].map((slot) => loraSlot(slot)).join("")}</div>
+      <div class="mtab-callout purple">${icon("fa-circle-info")}<span>Trigger words are added to the prompt automatically whenever that slot has a LoRA selected. Many LoRAs do nothing without them.</span></div>
     </div>
     <details class="mtab-panel">
       <summary class="mtab-panel-title blue">${icon("fa-code")} ComfyUI Field Placeholders</summary>
@@ -3293,6 +3338,59 @@ function renderNpcCard(npc) {
         </div>
       </div>
     </details>`;
+}
+function renderSettings() {
+  const p = state.profile;
+  return `
+    <div class="mtab-header">
+      <div class="mtab-header-left">
+        <div class="mtab-header-icon" style="background: linear-gradient(135deg, #64748b, #475569);">${icon("fa-gear")}</div>
+        <div>
+          <h2>Global Settings</h2>
+          <p>Extension preferences and about info.</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:16px;">
+
+      <div class="mtab-toggle-row ${p.toggles.promptPreview ? "active" : ""}" id="gs_toggle_prompt_preview" data-action="toggle" data-path="toggles.promptPreview" style="cursor: pointer;">
+        <div class="toggle-info">
+          <div class="toggle-label">${icon("fa-magnifying-glass")} Prompt Payload Preview</div>
+          <div class="toggle-desc">Show a popup of the final constructed prompt right before it is sent to the AI.</div>
+        </div>
+        <div class="ps-switch" style="${p.toggles.promptPreview ? "background: var(--gold);" : ""}"></div>
+      </div>
+
+      <div class="mtab-toggle-row ${p.disableUtilityPrefill ? "active" : ""}" id="gs_toggle_utility_prefill" data-action="toggle" data-path="disableUtilityPrefill" style="cursor: pointer;">
+        <div class="toggle-info">
+          <div class="toggle-label">${icon("fa-ban")} Disable Utility Prefills</div>
+          <div class="toggle-desc">Turn this ON if your API (like Claude) errors out during Image Gen, Banlist, or Story Director generation.</div>
+        </div>
+        <div class="ps-switch" style="${p.disableUtilityPrefill ? "background: #ef4444;" : ""}"></div>
+      </div>
+
+      <div class="mtab-panel" style="margin-top: 15px; text-align: center;">
+        <div style="font-size: 1.5rem; font-weight: 900; color: var(--gold); margin-bottom: 4px; text-shadow: 0 2px 10px rgba(245,158,11,0.3);">Megumin Suite v9</div>
+        <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">Made by KazumaONIISAN</div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px; align-items: center;">
+          <a href="https://github.com/Arif-salah/Megumin-Suite" target="_blank" rel="noreferrer" style="color: var(--text-main); text-decoration: none; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 8px; transition: background 0.2s ease; cursor: pointer;">
+            ${icon("fa-code-branch")} GitHub Repository
+          </a>
+          <div style="color: var(--text-main); font-size: 0.8rem; background: rgba(59, 130, 246, 0.1); padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.3); display: flex; align-items: center; gap: 8px;">
+            ${icon("fa-link")} arifsalah10@gmail.com
+          </div>
+          <div style="color: var(--text-main); font-size: 0.75rem; background: rgba(161, 161, 170, 0.1); padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(161, 161, 170, 0.3); display: flex; align-items: center; gap: 8px; word-break: break-all; max-width: 90%; text-align: left;">
+            ${icon("fa-coins")} LTC: LSjf1DczHxs3GEbkoMmi1UWH2GikmXDtis
+          </div>
+        </div>
+
+        <div style="font-size: 0.7rem; color: #a855f7; margin-top: 15px; background: rgba(168,85,247,0.1); display: inline-block; padding: 4px 12px; border-radius: 12px; border: 1px solid rgba(168,85,247,0.3);">
+          ${icon("fa-earth-americas")} These settings are saved globally
+        </div>
+      </div>
+    </div>`;
 }
 function renderDev() {
   const coreEngines = state.engines.filter((engine) => !state.customEngines.some((custom) => custom.id === engine.id));
@@ -3650,9 +3748,11 @@ function loraSlot(slot) {
   const suffix = slot === 1 ? "" : String(slot);
   const loraPath = `imageGen.selectedLora${suffix}`;
   const weightPath = `imageGen.selectedLoraWt${suffix}`;
+  const triggerPath = `imageGen.loraTrigger${slot}`;
   const loraValue = String(getPath(state.profile, loraPath) || "");
   const weightValue = Number(getPath(state.profile, weightPath) || 1);
-  return `<div class="lora-slot"><div class="mini-label">Slot ${slot}</div><select id="ig_lora_${slot}" class="ps-modern-input" data-bind="${loraPath}" style="padding: 6px; font-size: 0.75rem; margin-bottom: 8px;"><option value="">Loading...</option>${loraValue ? `<option value="${escapeHtml(loraValue)}" selected>${escapeHtml(loraValue)}</option>` : ""}</select><div class="mtab-param-row" style="padding:0;"><span class="param-label" style="min-width:30px;">Wt</span><input type="range" id="ig_lorawt_${slot}" min="-2" max="2" step="0.1" data-bind="${weightPath}" value="${weightValue}"><span id="ig_lorawt_lbl_${slot}" style="font-size:0.78rem; font-weight:600; color:var(--text-main); min-width:30px; text-align:center;">${weightValue}</span></div></div>`;
+  const triggerValue = String(getPath(state.profile, triggerPath) || "");
+  return `<div class="lora-slot"><div class="mini-label">Slot ${slot}</div><select id="ig_lora_${slot}" class="ps-modern-input" data-bind="${loraPath}" style="padding: 6px; font-size: 0.75rem; margin-bottom: 4px;"><option value="">Loading...</option>${loraValue ? `<option value="${escapeHtml(loraValue)}" selected>${escapeHtml(loraValue)}</option>` : ""}</select><input type="text" id="ig_lora_trig_${slot}" class="ps-modern-input" data-bind="${triggerPath}" placeholder="Trigger words..." value="${escapeHtml(triggerValue)}" style="padding: 6px; font-size: 0.7rem; margin-bottom: 8px; width: 100%; box-sizing: border-box;" title="Words automatically injected into the prompt when this LoRA is active." /><div class="mtab-param-row" style="padding:0;"><span class="param-label" style="min-width:30px;">Wt</span><input type="range" id="ig_lorawt_${slot}" min="-2" max="2" step="0.1" data-bind="${weightPath}" value="${weightValue}"><span id="ig_lorawt_lbl_${slot}" style="font-size:0.78rem; font-weight:600; color:var(--text-main); min-width:30px; text-align:center;">${weightValue}</span></div></div>`;
 }
 function npcField(key, label, fieldIcon, color, value) {
   return `<div class="npc-field-section"><strong style="color:${color};">${icon(fieldIcon)} ${escapeHtml(label)}</strong><textarea class="ps-modern-input npc-field-edit" data-field="${escapeHtml(key)}">${escapeHtml(value || "")}</textarea></div>`;
@@ -3773,15 +3873,15 @@ function activeTabProfileKeys() {
   const map = {
     Engine: ["mode", "toggles", "activeStyleId", "aiRule"],
     Persona: ["personality", "toggles"],
-    Style: ["activeStyleId", "aiRule", "customStyles", "dnRatio"],
-    Config: ["storyConfig", "configPresets"],
+    Config: ["storyConfig", "configPresets", "activeStyleId", "aiRule", "customStyles", "dnRatio"],
     Global: ["addons", "userWordCount", "v9Limits", "userLanguage", "userPronouns", "disableUtilityPrefill", "onomatopoeia", "toggles"],
     Blocks: ["blocks", "blockStack", "statBlocks", "worldState"],
     Thinking: ["model", "thinkEffort", "customThinkEffort", "thinkingV2"],
     Story: ["storyPlan"],
     Ban: ["banList", "banListBackend"],
     Image: ["imageGen"],
-    NPCs: ["npcBank"]
+    NPCs: ["npcBank"],
+    Settings: ["toggles", "disableUtilityPrefill"]
   };
   return map[tabs[state.activeTab]?.short || ""] || [];
 }
@@ -3915,6 +4015,7 @@ var faLibrary = {
   faBoxOpen,
   faChevronDown,
   faRulerHorizontal,
+  faCoins,
   faArrowsRotate,
   faBan,
   faBolt,

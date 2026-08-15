@@ -125,7 +125,13 @@ var DEFAULT_PROFILE = {
     directLanguage: false,
     injectNpcTags: false,
     customPrompts: null,
-    customPromptsEnabled: false
+    customPromptsEnabled: false,
+    loraTrigger1: "",
+    loraTrigger2: "",
+    loraTrigger3: "",
+    loraTrigger4: "",
+    loraTriggersMap: {},
+    promptPrefix: ""
   },
   npcBank: {
     enabled: false,
@@ -164,7 +170,11 @@ function mergeProfile(raw) {
     ...input.storyPlan || {},
     flavorTags: Array.isArray(input.storyPlan?.flavorTags) ? input.storyPlan.flavorTags : []
   };
-  merged.imageGen = { ...base.imageGen, ...input.imageGen || {} };
+  merged.imageGen = {
+    ...base.imageGen,
+    ...input.imageGen || {},
+    loraTriggersMap: input.imageGen?.loraTriggersMap || {}
+  };
   merged.userWordCount = String(input.userWordCount ?? base.userWordCount);
   merged.userLanguage = String(input.userLanguage ?? base.userLanguage);
   merged.customThinkEffort = String(input.customThinkEffort ?? base.customThinkEffort);
@@ -621,6 +631,24 @@ var COMPACT_WORLD_STATE = `Omit deep lore, unresolved threads, and off-screen tr
 **NPCs Present:**
 * [Name]: [Brief visible clothing] | [Posture/position]
 </World_State>`;
+function syncLegacyBlockIds(profile) {
+  const stack = profile.blockStack;
+  if (!stack)
+    return profile.blocks || [];
+  if (!stack.order.length)
+    return profile.blocks || [];
+  const owned = BLOCK_REGISTRY.flatMap((b) => b.legacyIds || []);
+  const had = profile.blocks || [];
+  const next = had.filter((id) => !owned.includes(id));
+  for (const block of BLOCK_REGISTRY) {
+    if (!block.legacyIds?.length)
+      continue;
+    if (!stack.order.includes(block.id))
+      continue;
+    next.push(block.legacyIds.find((id) => had.includes(id)) || block.legacyIds[0]);
+  }
+  return [...new Set(next)];
+}
 
 // src/story-config.ts
 var CONFIG_PREAMBLE = `These are standing settings for this story. Where a setting here contradicts anything above, this block wins. These apply to the whole story, not a single scene.`;
@@ -1640,6 +1668,29 @@ function extractImagePrompt(raw) {
   const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   const match = /<img[^>]*?prompt=(["']?)([\s\S]*?)(?:\1\s*\/?>|\1\s+[a-zA-Z]+=)/i.exec(cleaned);
   return (match ? match[2] : cleaned).trim();
+}
+function applyPromptPrefixes(settings, prompt) {
+  const slots = [
+    [settings.selectedLora, settings.loraTrigger1],
+    [settings.selectedLora2, settings.loraTrigger2],
+    [settings.selectedLora3, settings.loraTrigger3],
+    [settings.selectedLora4, settings.loraTrigger4]
+  ];
+  const triggers = slots.filter(([lora, trigger]) => String(lora || "").trim() !== "" && String(trigger || "").trim() !== "").map(([, trigger]) => trigger.trim());
+  let out = prompt;
+  if (triggers.length) {
+    let combined = triggers.join(", ");
+    if (!combined.endsWith(","))
+      combined += ",";
+    out = `${combined} ${out}`;
+  }
+  if (settings.promptPrefix && settings.promptPrefix.trim() !== "") {
+    let prefix = settings.promptPrefix.trim();
+    if (!prefix.endsWith(","))
+      prefix += ",";
+    out = `${prefix} ${out}`;
+  }
+  return out;
 }
 
 // src/npc-bank.ts
@@ -5709,8 +5760,9 @@ function presetUsesEnvelope(incoming) {
     return message.content.some((part) => part.type === "text" && part.text.includes("[[blocks]]"));
   });
 }
-function buildBaseDict(profile, customEngines, chatMessages, context, usesEnvelope = false) {
+function buildBaseDict(rawProfile, customEngines, chatMessages, context, usesEnvelope = false) {
   const dict = {};
+  const profile = { ...rawProfile, blocks: syncLegacyBlockIds(rawProfile) };
   const activeEngine = selectedEngine(profile, customEngines);
   const allModes = allEngines(customEngines);
   const isCustom = !logic.modes.some((mode) => mode.id === activeEngine.id);
@@ -6582,8 +6634,10 @@ async function resolveImageConnection(profile, userId) {
     return null;
   }
 }
-async function generateImageForChat(scope, chatId, prompt, attachToMessageId, userId) {
+async function generateImageForChat(scope, rawChatId, rawPrompt, attachToMessageId, userId) {
   const profile = await loadProfile(scope, userId);
+  const chatId = rawChatId;
+  const prompt = applyPromptPrefixes(profile.imageGen, rawPrompt);
   const connection = await resolveImageConnection(profile, userId);
   const parameters = {
     width: profile.imageGen.imgWidth,

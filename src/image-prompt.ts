@@ -171,3 +171,36 @@ export function extractImagePrompt(raw: string): string {
   const match = /<img[^>]*?prompt=(["']?)([\s\S]*?)(?:\1\s*\/?>|\1\s+[a-zA-Z]+=)/i.exec(cleaned);
   return (match ? match[2] : cleaned).trim();
 }
+
+/**
+ * Prepends the LoRA trigger words and the quality prefix to a finished prompt.
+ *
+ * Many LoRAs do nothing at all unless their trigger words appear in the prompt,
+ * so a slot with a LoRA selected contributes its triggers automatically. Order
+ * matches the ST build: prefix first, then triggers, then the scene.
+ */
+export function applyPromptPrefixes(settings: ImageGenSettings, prompt: string): string {
+  const slots: Array<[lora: string, trigger: string]> = [
+    [settings.selectedLora, settings.loraTrigger1],
+    [settings.selectedLora2, settings.loraTrigger2],
+    [settings.selectedLora3, settings.loraTrigger3],
+    [settings.selectedLora4, settings.loraTrigger4]
+  ];
+
+  const triggers = slots
+    .filter(([lora, trigger]) => String(lora || "").trim() !== "" && String(trigger || "").trim() !== "")
+    .map(([, trigger]) => trigger.trim());
+
+  let out = prompt;
+  if (triggers.length) {
+    let combined = triggers.join(", ");
+    if (!combined.endsWith(",")) combined += ",";
+    out = `${combined} ${out}`;
+  }
+  if (settings.promptPrefix && settings.promptPrefix.trim() !== "") {
+    let prefix = settings.promptPrefix.trim();
+    if (!prefix.endsWith(",")) prefix += ",";
+    out = `${prefix} ${out}`;
+  }
+  return out;
+}

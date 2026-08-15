@@ -146,6 +146,18 @@ export interface ImageGenSettings {
   injectNpcTags: boolean;
   customPrompts: Record<string, string> | null;
   customPromptsEnabled: boolean;
+  /**
+   * Trigger words for each LoRA slot. Prepended to the finished prompt whenever
+   * that slot has a LoRA selected — many LoRAs do nothing without them.
+   */
+  loraTrigger1: string;
+  loraTrigger2: string;
+  loraTrigger3: string;
+  loraTrigger4: string;
+  /** Remembers the triggers per LoRA filename, so reselecting one restores them. */
+  loraTriggersMap: Record<string, string>;
+  /** Quality tags prepended ahead of everything else. */
+  promptPrefix: string;
 }
 
 export interface BanListPrompts {

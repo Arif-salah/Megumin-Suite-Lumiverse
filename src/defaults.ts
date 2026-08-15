@@ -134,7 +134,13 @@ export const DEFAULT_PROFILE: MeguminProfile = {
     directLanguage: false,
     injectNpcTags: false,
     customPrompts: null,
-    customPromptsEnabled: false
+    customPromptsEnabled: false,
+    loraTrigger1: "",
+    loraTrigger2: "",
+    loraTrigger3: "",
+    loraTrigger4: "",
+    loraTriggersMap: {},
+    promptPrefix: ""
   },
   npcBank: {
     enabled: false,
@@ -175,7 +181,11 @@ export function mergeProfile(raw: unknown): MeguminProfile {
     ...(input.storyPlan || {}),
     flavorTags: Array.isArray(input.storyPlan?.flavorTags) ? input.storyPlan.flavorTags : []
   };
-  merged.imageGen = { ...base.imageGen, ...(input.imageGen || {}) };
+  merged.imageGen = {
+    ...base.imageGen,
+    ...(input.imageGen || {}),
+    loraTriggersMap: input.imageGen?.loraTriggersMap || {}
+  };
   merged.userWordCount = String((input as any).userWordCount ?? base.userWordCount);
   merged.userLanguage = String((input as any).userLanguage ?? base.userLanguage);
   merged.customThinkEffort = String((input as any).customThinkEffort ?? base.customThinkEffort);
