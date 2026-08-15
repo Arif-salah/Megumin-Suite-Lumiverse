@@ -1175,3 +1175,30 @@ describe("Megumin prompt corpus", () => {
     expect(joined).not.toMatch(/\[\[[^\]]+\]\]/);
   });
 });
+
+describe("Megumin stylesheet isolation", () => {
+  const sheet = (() => {
+    const start = frontendSource.indexOf("const BETA_STYLE_CSS = String.raw`");
+    return frontendSource.slice(start, frontendSource.indexOf("\n`;", start));
+  })();
+
+  test("no rule can reach outside the extension's own root", () => {
+    // The copied sheet was authored against SillyTavern's DOM. Unscoped, its
+    // `*` reset and its div[style*="..."] rules restyled Lumiverse's own UI.
+    const selectors = [...sheet.matchAll(/^\s*([^{}@\n/][^{\n]*?)\s*\{/gm)].map((m) => m[1]);
+    const escaping: string[] = [];
+    for (const selector of selectors) {
+      for (const part of selector.split(",")) {
+        const trimmed = part.trim().replace(/^\}/, "").trim();
+        if (!trimmed || /^(from|to|\d+%)$/.test(trimmed)) continue;
+        if (!trimmed.startsWith(".megumin-suite-app")) escaping.push(trimmed);
+      }
+    }
+    expect(escaping).toEqual([]);
+  });
+
+  test("the global animation reset and :root variables are scoped", () => {
+    expect(sheet).not.toMatch(/^\s*\*[,\s]/m);
+    expect(sheet).not.toMatch(/^\s*:root\s*\{/m);
+  });
+});
