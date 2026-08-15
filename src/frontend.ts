@@ -9,6 +9,17 @@ import {
   faArrowUp,
   faCompress,
   faListOl,
+  faClapperboard,
+  faInfinity,
+  faFire,
+  faMoon,
+  faWind,
+  faForwardFast,
+  faLockOpen,
+  faPenFancy,
+  faBoxOpen,
+  faChevronDown,
+  faRulerHorizontal,
   faArrowsRotate,
   faBan,
   faBolt,
@@ -96,7 +107,7 @@ import {
   faWifi,
   faXmark
 } from "@fortawesome/free-solid-svg-icons";
-import type { EngineMode, MeguminProfile, RpcResponse } from "./types";
+import type { CustomBlock, EngineMode, MeguminProfile, RpcResponse } from "./types";
 import { DEFAULT_PROFILE, clone, mergeProfile } from "./defaults";
 import { KAZUMA_PLACEHOLDERS, RESOLUTIONS } from "./image-data";
 import type { StoryConfigField } from "./story-config";
@@ -107,7 +118,8 @@ import {
   countActiveConfigFields,
   storyConfigFields
 } from "./story-config";
-import { BLOCK_REGISTRY, arrangeableBlocks, blockById } from "./blocks";
+import type { BlockDef } from "./blocks";
+import { BLOCK_REGISTRY, BLOCK_VISIBILITY_CHOICES, STAT_FIELD_PACKS, STAT_FIELD_TYPES, activeBlocks, blockById } from "./blocks";
 import { SD_CONTENT_RATINGS, SD_FLAVORS, SD_GENRES, SD_PACING } from "./story-director";
 
 type Ctx = SpindleFrontendContext & Record<string, any>;
@@ -121,6 +133,7 @@ type AppState = {
   devEditorId: string | null;
   styleEditorId: string | null;
   engineFilter: string;
+  openConfigRow: string | null;
   styleFilter: string;
   context: any;
   profile: MeguminProfile;
@@ -164,6 +177,7 @@ const state: AppState = {
   devEditorId: null,
   styleEditorId: null,
   engineFilter: "all",
+  openConfigRow: null,
   styleFilter: "direct",
   context: null,
   profile: clone(DEFAULT_PROFILE),
@@ -498,13 +512,32 @@ function wire(container: HTMLElement) {
   container.querySelectorAll<HTMLElement>("[data-action]").forEach((el) => {
     el.addEventListener("click", () => handleAction(el));
   });
-  // Story Config selects carry a "Custom…" escape hatch, so they cannot just bind:
-  // picking it has to clear the value and re-render into a free-text input rather
-  // than storing the sentinel.
+  // Story Config selects carry a "Write my own…" escape hatch, so they cannot just
+  // bind: picking it has to reveal the free-text box rather than store the sentinel.
   container.querySelectorAll<HTMLSelectElement>("select[data-action=\"config-select\"]").forEach((select) => {
     select.addEventListener("change", () => {
-      const path = select.dataset.path!;
-      setPath(state.profile as any, path, select.value === "__custom__" ? " " : select.value);
+      const path = select.dataset.bind || select.dataset.path!;
+      const row = select.closest(".cfg-row-control");
+      const custom = row?.querySelector<HTMLInputElement>(".cfg-custom");
+      if (select.value === "__custom") {
+        if (custom) {
+          custom.style.display = "block";
+          custom.focus();
+          setPath(state.profile as any, path, custom.value || "");
+        }
+      } else {
+        if (custom) custom.style.display = "none";
+        setPath(state.profile as any, path, select.value);
+      }
+      saveProfileSoon();
+      render();
+    });
+  });
+  container.querySelectorAll<HTMLSelectElement>("select[data-action=\"blk-vis\"]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const id = select.dataset.id!;
+      const overrides = state.profile.blockStack.overrides as unknown as Record<string, { visibility?: string }>;
+      overrides[id] = { ...(overrides[id] || {}), visibility: select.value };
       saveProfileSoon();
       render();
     });
@@ -935,116 +968,186 @@ async function handleAction(el: HTMLElement) {
       render();
       return;
     }
-    if (action === "sp-flavor") {
+    if (action === "sd-flavor") {
       const flavor = el.dataset.value || "";
       const tags = state.profile.storyPlan.flavorTags;
       const at = tags.indexOf(flavor);
       if (at >= 0) tags.splice(at, 1);
-      else tags.push(flavor);
+      // The label says "pick up to 3", so the cap is enforced rather than advisory.
+      else if (tags.length < 3) tags.push(flavor);
+      else state.status = "Pick up to 3 flavor tags";
       saveProfileSoon();
       render();
       return;
     }
-    if (action === "config-preset") {
-      const preset = allConfigPresets(state.profile.configPresets || []).find((item) => item.id === el.dataset.value);
+    if (action === "story-evolve") return runTask("Evolving directive...", "story:generate");
+    if (action === "cfg-row") {
+      // One row open at a time keeps the list readable at fifteen settings.
+      const key = el.dataset.value || "";
+      state.openConfigRow = state.openConfigRow === key ? null : key;
+      render();
+      return;
+    }
+    if (action === "cfg-chip") {
+      const path = el.dataset.path!;
+      const chip = el.dataset.value || "";
+      const current = String(getPath(state.profile as any, path) || "");
+      const parts = current.split(",").map((part) => part.trim()).filter(Boolean);
+      const at = parts.indexOf(chip);
+      if (at > -1) parts.splice(at, 1);
+      else parts.push(chip);
+      setPath(state.profile as any, path, parts.join(", "));
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "cfg-preset-load") {
+      const select = document.querySelector<HTMLSelectElement>("#cfg_preset_select");
+      const id = select?.value || "";
+      if (!id) { state.status = "Pick a preset first."; render(); return; }
+      const preset = allConfigPresets(state.profile.configPresets || []).find((item) => item.id === id);
       if (!preset) return;
-      if (!confirm(`Load "${preset.name}"? This overwrites every Story Config field.`)) return;
-      // Start from a clean slate so a field the preset leaves out goes back to
-      // Default rather than keeping a stale value from whatever was there before.
-      const cleared: Record<string, string | boolean> = { enabled: true };
-      for (const field of storyConfigFields) cleared[field.key] = "";
-      state.profile.storyConfig = { ...cleared, ...preset.values, enabled: true } as any;
-      saveProfileSoon();
-      render();
-      return;
-    }
-    if (action === "bstack-toggle") {
-      const id = el.dataset.id || el.dataset.value || "";
-      const order = state.profile.blockStack.order;
-      const at = order.indexOf(id);
-      if (at >= 0) order.splice(at, 1);
-      else {
-        // Choices is the one block the reader acts on, so it opens the strip
-        // unless they move it themselves.
-        const def = blockById(state.profile, id) as any;
-        if (def?.preferFirst) order.unshift(id);
-        else order.push(id);
+      // Every field is written, so a field the preset omits goes back to Default
+      // rather than keeping whatever happened to be there.
+      for (const field of storyConfigFields) {
+        (state.profile.storyConfig as Record<string, string | boolean>)[field.key] = preset.values[field.key] || "";
       }
       saveProfileSoon();
       render();
       return;
     }
-    if (action === "bstack-move") {
+    if (action === "cfg-preset-save") {
+      const name = prompt("Name this config preset:");
+      if (!name || !name.trim()) return;
+      const values: Record<string, string> = {};
+      for (const field of storyConfigFields) values[field.key] = String(state.profile.storyConfig[field.key] || "");
+      state.profile.configPresets = [
+        ...(state.profile.configPresets || []),
+        { id: "cfgp_" + Date.now(), name: name.trim(), builtin: false, values }
+      ];
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "cfg-preset-delete") {
+      const select = document.querySelector<HTMLSelectElement>("#cfg_preset_select");
+      const id = select?.value || "";
+      if (!id) { state.status = "Pick a preset first."; render(); return; }
+      const preset = allConfigPresets(state.profile.configPresets || []).find((item) => item.id === id);
+      if (!preset) return;
+      if (preset.builtin) { state.status = "Built-in presets can't be deleted."; render(); return; }
+      if (!confirm(`Delete the preset "${preset.name}"?`)) return;
+      state.profile.configPresets = (state.profile.configPresets || []).filter((item) => item.id !== id);
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "cfg-reset-all") {
+      if (!confirm("Set every setting back to preset default?")) return;
+      for (const field of storyConfigFields) {
+        (state.profile.storyConfig as Record<string, string | boolean>)[field.key] = "";
+      }
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "blk-add") {
       const id = el.dataset.id || "";
-      const direction = Number(el.dataset.dir || 0);
+      const def = blockById(state.profile, id) as BlockDef | undefined;
+      // Choices is the one block the reader acts on, so it opens the strip.
+      if (def?.preferFirst) state.profile.blockStack.order.unshift(id);
+      else state.profile.blockStack.order.push(id);
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "blk-remove") {
+      const id = el.dataset.id || "";
+      state.profile.blockStack.order = state.profile.blockStack.order.filter((item) => item !== id);
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "blk-move") {
+      const id = el.dataset.id || "";
+      const delta = Number(el.dataset.dir || 0);
       const order = state.profile.blockStack.order;
       const at = order.indexOf(id);
-      const to = at + direction;
+      const to = at + delta;
       if (at < 0 || to < 0 || to >= order.length) return;
       order.splice(to, 0, ...order.splice(at, 1));
       saveProfileSoon();
       render();
       return;
     }
-    if (action === "bcustom-new") {
+    if (action === "blk-new") {
       const name = prompt("Name for the custom block:");
       if (!name || !name.trim()) return;
-      // The tag is what the model actually writes, so it has to be a legal XML
-      // name rather than whatever the reader typed.
+      // The tag is what the model writes, so it has to be a legal XML name.
       const tag = name.trim().replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "Custom_Block";
-      const taken = new Set([...BLOCK_REGISTRY.map((b) => b.tag.toLowerCase()), ...state.profile.blockStack.custom.map((b) => b.tag.toLowerCase())]);
+      const taken = new Set([
+        ...BLOCK_REGISTRY.map((b) => b.tag.toLowerCase()),
+        ...state.profile.blockStack.custom.map((b) => b.tag.toLowerCase())
+      ]);
       if (taken.has(tag.toLowerCase())) {
         alert(`A block already uses the tag <${tag}>. Pick another name.`);
         return;
       }
-      state.profile.blockStack.custom.push({
-        id: `custom_${Date.now().toString(36)}`,
-        name: name.trim(),
-        tag,
-        content: ""
-      });
+      const id = "custom_" + Date.now().toString(36);
+      state.profile.blockStack.custom.push({ id, name: name.trim(), tag, content: "" });
+      state.profile.blockStack.order.push(id);
       saveProfileSoon();
       render();
       return;
     }
-    if (action === "bcustom-delete") {
+    if (action === "blk-edit") {
       const id = el.dataset.id || "";
-      const custom = state.profile.blockStack.custom;
-      const at = custom.findIndex((item) => item.id === id);
-      if (at < 0) return;
-      if (!confirm(`Delete "${custom[at].name}"?`)) return;
-      custom.splice(at, 1);
-      // A deleted block must leave the stack too, or the envelope would look up an
-      // id that no longer resolves.
-      const order = state.profile.blockStack.order;
-      const inOrder = order.indexOf(id);
-      if (inOrder >= 0) order.splice(inOrder, 1);
+      const block = state.profile.blockStack.custom.find((item) => item.id === id);
+      if (!block) return;
+      const next = prompt(`What should the model put inside <${block.tag}>?`, block.content);
+      if (next === null) return;
+      block.content = next;
       saveProfileSoon();
       render();
       return;
     }
-    if (action === "bfield-add") {
+    if (action === "sf-add") {
       const blockId = el.dataset.block || "";
-      const label = prompt("Field label (e.g. Jealousy):");
-      if (!label || !label.trim()) return;
       const target = state.profile.statBlocks[blockId] || (state.profile.statBlocks[blockId] = { fields: [] });
-      target.fields.push({
-        id: label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"),
-        label: label.trim(),
-        type: "meter",
-        max: 100,
-        start: 0
-      });
+      target.fields.push({ id: "f_" + Date.now(), label: "New field", type: "meter", max: 100, start: 0 });
       saveProfileSoon();
       render();
       return;
     }
-    if (action === "bfield-delete") {
-      const blockId = el.dataset.block || "";
+    if (action === "sf-del") {
+      const fields = state.profile.statBlocks[el.dataset.block || ""]?.fields;
       const index = Number(el.dataset.index || -1);
-      const fields = state.profile.statBlocks[blockId]?.fields;
       if (!fields || index < 0 || index >= fields.length) return;
       fields.splice(index, 1);
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "sf-up") {
+      const fields = state.profile.statBlocks[el.dataset.block || ""]?.fields;
+      const index = Number(el.dataset.index || -1);
+      if (!fields || index <= 0) return;
+      fields.splice(index - 1, 0, ...fields.splice(index, 1));
+      saveProfileSoon();
+      render();
+      return;
+    }
+    if (action === "sf-pack") {
+      const blockId = el.dataset.block || "";
+      const pack = (STAT_FIELD_PACKS[blockId] || []).find((item) => item.id === el.dataset.value);
+      if (!pack) return;
+      const target = state.profile.statBlocks[blockId] || (state.profile.statBlocks[blockId] = { fields: [] });
+      // Merge, never replace: a field already there keeps its settings.
+      for (const field of pack.fields) {
+        if (!target.fields.some((existing) => String(existing.label).toLowerCase() === field.label.toLowerCase())) {
+          target.fields.push({ ...field });
+        }
+      }
       saveProfileSoon();
       render();
       return;
@@ -1424,204 +1527,278 @@ function renderGlobalSettings(): string {
     </div>`;
 }
 
-/**
- * Story Config: the standing settings for a story, compiled into <config>.
- *
- * Every field is optional and every field defaults to blank, which means "leave it
- * to the engine". A blank field emits no line at all, so the block only ever
- * carries what the reader actually decided.
- */
+// Empty text fields say so in the box itself, so nobody has to guess what blank means.
+function fieldPlaceholder(f: StoryConfigField): string {
+  return `${f.placeholder || ""} — leave empty for preset default`;
+}
+
 function renderStoryConfig(): string {
   const cfg = state.profile.storyConfig;
-  const active = countActiveConfigFields(cfg);
   const presets = allConfigPresets(state.profile.configPresets || []);
 
-  const fieldRow = (field: StoryConfigField): string => {
-    const value = String(cfg[field.key] || "");
-    const path = `storyConfig.${field.key}`;
+  let presetOpts = `<option value="">Load a config preset…</option>`;
+  presetOpts += `<optgroup label="Built-in">`;
+  presets.filter((p) => p.builtin).forEach((p) => { presetOpts += `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`; });
+  presetOpts += `</optgroup>`;
+  const savedPresets = presets.filter((p) => !p.builtin);
+  if (savedPresets.length) {
+    presetOpts += `<optgroup label="My Presets">`;
+    savedPresets.forEach((p) => { presetOpts += `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`; });
+    presetOpts += `</optgroup>`;
+  }
 
-    if (field.type === "textarea") {
-      return `
-        <div class="cfg-field">
-          <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span></div>
-          <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
-          <textarea class="ps-modern-input textarea-sm" data-bind="${path}" placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(value)}</textarea>
-        </div>`;
-    }
+  const summaryFor = (f: StoryConfigField, v: unknown): string => {
+    const t = String(v || "").trim();
+    if (t === "") return f.defaultLabel ? `Preset default — ${f.defaultLabel}` : "Preset default";
+    // Show the option's short label rather than the long text the model reads.
+    const match = (f.options || []).find((o) => typeof o !== "string" && o.value === t);
+    return match && typeof match !== "string" ? match.label : t;
+  };
 
-    if (field.type === "select") {
-      const options = field.options || [];
-      const values = options.map(configOptionValue);
-      const isCustom = Boolean(value) && !values.includes(value);
-      return `
-        <div class="cfg-field">
-          <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span>${value ? `<button class="cfg-clear" type="button" data-action="select" data-path="${path}" data-value="" title="Back to Default">${icon("fa-rotate-left")}</button>` : ""}</div>
-          <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
-          <select class="ps-modern-input" data-action="config-select" data-path="${path}">
-            <option value="" ${!value ? "selected" : ""}>Default${field.defaultLabel ? ` (${escapeHtml(field.defaultLabel)})` : ""}</option>
-            ${options.map((option) => {
-              const optionValue = configOptionValue(option);
-              return `<option value="${escapeHtml(optionValue)}" ${value === optionValue ? "selected" : ""}>${escapeHtml(configOptionLabel(option))}</option>`;
-            }).join("")}
-            <option value="__custom__" ${isCustom ? "selected" : ""}>Custom…</option>
-          </select>
-          ${isCustom ? `<input type="text" class="ps-modern-input" style="margin-top:8px;" data-bind="${path}" value="${escapeHtml(value.trim())}" placeholder="${escapeHtml(field.customPlaceholder || "")}" />` : ""}
-        </div>`;
+  const fieldRow = (f: StoryConfigField): string => {
+    const val = String(cfg[f.key] || "");
+    const isOn = val.trim() !== "";
+    const isOpen = state.openConfigRow === f.key;
+    const path = `storyConfig.${f.key}`;
+
+    let control = "";
+    if (f.type === "select") {
+      // An option is either a plain string, or { label, value } when the value the
+      // model reads is longer than the words that belong in a dropdown.
+      const opList = (f.options || []).map((o) => (typeof o === "string" ? { label: o, value: o } : o));
+      const isCustom = isOn && !opList.some((o) => o.value === val);
+      // Fields with a named default (friction: normal, npc_disposition: ordinary,
+      // narrator_presence: light) name it here — picking it still drops the line,
+      // because the preset already behaves that way.
+      const defLabel = f.defaultLabel ? `Preset default — ${f.defaultLabel}` : `Preset default`;
+      let opts = `<option value="" ${!isOn ? "selected" : ""}>${escapeHtml(defLabel)}</option>`;
+      opList.forEach((o) => {
+        opts += `<option value="${escapeHtml(o.value)}" ${val === o.value ? "selected" : ""}>${escapeHtml(o.label)}</option>`;
+      });
+      opts += `<option value="__custom" ${isCustom ? "selected" : ""}>Write my own…</option>`;
+
+      control = `
+        <select class="ps-modern-input cfg-select" data-action="config-select" data-path="${path}" style="width:100%; cursor:pointer;">${opts}</select>
+        <input type="text" class="ps-modern-input cfg-custom" data-bind="${path}" style="width:100%; margin-top:8px; display:${isCustom ? "block" : "none"};" placeholder="${escapeHtml(f.customPlaceholder || "Write it your own way")}" value="${isCustom ? escapeHtml(val) : ""}" />`;
+    } else if (f.type === "textarea") {
+      control = `<textarea class="ps-modern-input" data-bind="${path}" rows="3" style="width:100%; resize:vertical;" placeholder="${escapeHtml(fieldPlaceholder(f))}">${escapeHtml(val)}</textarea>`;
+    } else {
+      control = `<input type="text" class="ps-modern-input" data-bind="${path}" style="width:100%;" placeholder="${escapeHtml(fieldPlaceholder(f))}" value="${escapeHtml(val)}" />`;
+      if (f.chips && f.chips.length) {
+        const parts = val.split(",").map((s) => s.trim()).filter(Boolean);
+        const chips = f.chips.map((chip) => {
+          const selected = parts.includes(chip);
+          return `<span class="wstyle-tag cfg-chip ${selected ? "selected" : ""}" data-action="cfg-chip" data-path="${path}" data-value="${escapeHtml(chip)}">${escapeHtml(chip)}</span>`;
+        }).join("");
+        control += `<div class="cfg-chips">${chips}</div>`;
+      }
     }
 
     return `
-      <div class="cfg-field">
-        <div class="cfg-field-head">${icon(field.icon || "fa-circle")}<span style="color:${field.color || "var(--gold)"}">${field.label}</span>${value ? `<button class="cfg-clear" type="button" data-action="select" data-path="${path}" data-value="" title="Back to Default">${icon("fa-rotate-left")}</button>` : ""}</div>
-        <div class="cfg-hint">${escapeHtml(field.hint || "")}</div>
-        <input type="text" class="ps-modern-input" data-bind="${path}" value="${escapeHtml(value)}" placeholder="${escapeHtml(field.placeholder || "")}" />
-        ${(field.chips || []).length ? `<div class="cfg-chips">${(field.chips || []).map((chip) => `<button type="button" class="cfg-chip ${value === chip ? "active" : ""}" data-action="select" data-path="${path}" data-value="${escapeHtml(chip)}">${escapeHtml(chip)}</button>`).join("")}</div>` : ""}
+      <div class="cfg-row ${isOn ? "on" : ""} ${isOpen ? "open" : ""}" data-key="${escapeHtml(f.key)}">
+        <div class="cfg-row-head" data-action="cfg-row" data-value="${escapeHtml(f.key)}">
+          <span class="cfg-row-label">${icon(f.icon || "fa-circle")} ${escapeHtml(f.label)}</span>
+          <span class="cfg-row-summary">${escapeHtml(summaryFor(f, val))}</span>
+          <span class="cfg-row-chev">${icon("fa-chevron-down")}</span>
+        </div>
+        <div class="cfg-row-body">
+          <div class="cfg-row-hint">${escapeHtml(f.hint || "")}</div>
+          <div class="cfg-row-control">${control}</div>
+        </div>
       </div>`;
   };
 
   return `
-    ${tabHeader("Story Config", "Standing settings for this story. These override anything above them.", "fa-sliders", "#eab308", cfg.enabled ? `${active} Active` : "Disabled", cfg.enabled ? "#10b981" : "#a1a1aa", cfg.enabled ? "fa-circle-check" : "fa-circle-xmark")}
-    ${presetFeatureWarning(["story-config"])}
-    <div id="cfg_enable_card" class="mtab-toggle-row ${cfg.enabled ? "active" : ""}" data-action="toggle" data-path="storyConfig.enabled" style="margin-bottom: 20px;">
-      <div class="toggle-info"><div class="toggle-label">${icon("fa-sliders")} Enable Story Config</div><div class="toggle-desc">Injects a &lt;config&gt; block that wins over anything earlier in the prompt. Requires a preset with the [[config]] hook.</div></div>
-      <div class="ps-switch"></div>
-    </div>
-    <div id="cfg_main_content" style="display:${cfg.enabled ? "block" : "none"};">
-      <div class="mtab-panel">
-        <div class="mtab-panel-title gold">${icon("fa-wand-magic-sparkles")} Starter Presets</div>
-        <div class="mtab-callout">${icon("fa-circle-info")}<span>Loading a preset overwrites every field below. Your own values are not kept.</span></div>
-        <div class="mtab-card-grid compact">
-          ${presets.map((preset) => infoCard({
-            title: preset.name,
-            sub: preset.builtin ? "Built-in" : "Saved",
-            active: false,
-            action: "config-preset",
-            value: preset.id
-          })).join("")}
+    <div class="ws-section" id="sec-config">
+      <h3 style="margin-top: 0; color: var(--gold); font-size: 1.1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">${icon("fa-sliders")} Story Config</h3>
+
+      ${presetFeatureWarning(["story-config"])}
+
+      <div class="cfg-master ${cfg.enabled ? "active" : ""}">
+        <div>
+          <div class="cfg-master-title">${icon("fa-scroll")} Inject Config Block</div>
+          <div class="cfg-master-desc">Standing settings for the whole story. Anything left on preset default is left to your preset.</div>
+        </div>
+        <div class="ps-toggle-card ${cfg.enabled ? "active" : ""}" id="cfg_master_toggle" data-action="toggle" data-path="storyConfig.enabled" style="padding: 2px; min-width: 44px; background: transparent; border-color: ${cfg.enabled ? "#10b981" : "var(--border-color)"}; cursor: pointer; border-radius: 8px;">
+          <div class="ps-switch" style="transform: scale(0.75); ${cfg.enabled ? "background: #10b981;" : ""}"></div>
         </div>
       </div>
-      <div class="cfg-grid">
+
+      <div class="cfg-preset-bar">
+        <select id="cfg_preset_select" class="ps-modern-input" style="flex: 1; min-width: 160px; cursor: pointer;">${presetOpts}</select>
+        <button class="ws-btn-small" type="button" id="cfg_preset_load" data-action="cfg-preset-load">${icon("fa-download")} Load</button>
+        <button class="ws-btn-small" type="button" id="cfg_preset_save" data-action="cfg-preset-save" style="color:#10b981; border-color: rgba(16,185,129,0.35);">${icon("fa-floppy-disk")} Save Current</button>
+        <button class="ws-btn-small" type="button" id="cfg_preset_delete" data-action="cfg-preset-delete" style="color:#ef4444; border-color: rgba(239,68,68,0.3);">${icon("fa-trash")}</button>
+        <button class="ws-btn-small" type="button" id="cfg_reset_all" data-action="cfg-reset-all" style="margin-left:auto;">${icon("fa-rotate-left")} Reset All</button>
+      </div>
+
+      <div class="cfg-fields ${cfg.enabled ? "" : "disabled"}">
         ${storyConfigFields.map(fieldRow).join("")}
       </div>
-      <div class="mtab-callout gold" style="margin-top:16px;">${icon("fa-triangle-exclamation")}<span><strong>Blank means Default.</strong> A blank field emits no line at all, so the engine keeps its own judgement for it.</span></div>
+    </div>`;
+}
+
+// The field list for a stat block, editable in place under its row.
+function renderStatFieldEditor(def: BlockDef): string {
+  const cfg = state.profile.statBlocks[def.id] || { fields: [] };
+  const fields = cfg.fields || [];
+
+  const rows = fields.map((f, i) => `
+    <div class="stat-field">
+      <input type="text" class="ps-modern-input sf-label" data-bind="statBlocks.${def.id}.fields.${i}.label" value="${escapeHtml(f.label)}" placeholder="Name" />
+      <select class="ps-modern-input sf-type" data-bind="statBlocks.${def.id}.fields.${i}.type">
+        ${STAT_FIELD_TYPES.map((t) => `<option value="${t.v}" ${f.type === t.v ? "selected" : ""} title="${escapeHtml(t.hint)}">${t.label}</option>`).join("")}
+      </select>
+      <input type="number" class="ps-modern-input sf-max" data-bind="statBlocks.${def.id}.fields.${i}.max" value="${f.max || 100}" title="Maximum" style="display:${f.type === "meter" ? "" : "none"};" />
+      <input type="number" class="ps-modern-input sf-start" data-bind="statBlocks.${def.id}.fields.${i}.start" value="${f.start !== undefined ? f.start : 0}" title="Starting value" style="display:${f.type === "meter" || f.type === "number" ? "" : "none"};" />
+      <button class="ws-btn-small sf-up" type="button" data-action="sf-up" data-block="${def.id}" data-index="${i}" ${i === 0 ? "disabled" : ""}>${icon("fa-arrow-up")}</button>
+      <button class="ws-btn-small sf-del" type="button" data-action="sf-del" data-block="${def.id}" data-index="${i}" style="color:#ef4444;">${icon("fa-xmark")}</button>
+    </div>`).join("");
+
+  const packs = (STAT_FIELD_PACKS[def.id] || [])
+    .map((pack) => `<button class="blk-add" type="button" data-action="sf-pack" data-block="${def.id}" data-value="${escapeHtml(pack.id)}">${icon("fa-box-open")} ${escapeHtml(pack.label)}</button>`)
+    .join("");
+
+  return `
+    <div class="blk-sub blk-sub-fields">
+      <div class="blk-sub-label" style="margin-bottom:2px;">Fields</div>
+      <div class="blk-sub-desc" style="margin-bottom:8px;">What the AI is asked to track${def.id === "bonds" ? " for each NPC" : ""}. Every field costs tokens on every reply.</div>
+      <div class="stat-field-list">${rows}</div>
+      <div class="blk-pool" style="margin-top:8px;">
+        <button class="blk-add" type="button" data-action="sf-add" data-block="${def.id}">${icon("fa-plus")} Add field</button>
+        ${packs}
+      </div>
     </div>`;
 }
 
 function renderBlocks(): string {
-  const blocks = state.logic?.blocks || [];
-  const activeMode = state.engines.find((engine) => engine.id === state.profile.mode) as any;
-  const customAddons = Array.isArray(activeMode?.customToggles)
-    ? activeMode.customToggles.filter((item: any) => item.location === "addons")
-    : [];
   const stack = state.profile.blockStack;
-  const ws = state.profile.worldState;
-  const inStack = (id: string) => stack.order.includes(id);
+  const all = [...BLOCK_REGISTRY, ...(stack.custom || [])].filter((b) => !(b as BlockDef).system);
+  const inStack = stack.order.map((id) => blockById(state.profile, id)).filter((b): b is BlockDef => Boolean(b) && !(b as BlockDef).system);
+  const available = all.filter((b) => !stack.order.includes(b.id));
 
-  // A block the reader can arrange, drawn as one row of the stack strip.
-  const stackRow = (id: string, index: number): string => {
-    const def = blockById(state.profile, id) as any;
-    if (!def) return "";
-    return `
-      <div class="bstack-row">
-        <div class="bstack-grip">${escapeHtml(def.emoji || "🔹")}</div>
-        <div class="bstack-name">
-          <div class="bstack-title" style="color:${def.color || "var(--gold)"}">${escapeHtml(def.label || def.name || id)}</div>
-          <div class="bstack-tag">&lt;${escapeHtml(def.tag)}&gt;</div>
-        </div>
-        <div class="bstack-actions">
-          <button type="button" class="ps-modern-btn secondary" title="Move up" data-action="bstack-move" data-id="${escapeHtml(id)}" data-dir="-1" ${index === 0 ? "disabled" : ""}>${icon("fa-arrow-up")}</button>
-          <button type="button" class="ps-modern-btn secondary" title="Move down" data-action="bstack-move" data-id="${escapeHtml(id)}" data-dir="1" ${index === stack.order.length - 1 ? "disabled" : ""}>${icon("fa-arrow-down")}</button>
-          <button type="button" class="ps-modern-btn secondary danger" title="Remove from stack" data-action="bstack-toggle" data-id="${escapeHtml(id)}">${icon("fa-xmark")}</button>
-        </div>
-      </div>`;
+  const visOf = (b: BlockDef) => {
+    const override = stack.overrides[b.id] as unknown as { visibility?: string } | string | undefined;
+    if (override && typeof override === "object" && override.visibility) return override.visibility;
+    return b.visibility || "open";
   };
 
-  const statEditor = (blockId: string, label: string): string => {
-    const fields = state.profile.statBlocks?.[blockId]?.fields || [];
-    return `
-      <div class="mtab-panel">
-        <div class="panel-heading-row">
-          <div class="mtab-panel-title gold">${icon("fa-sliders")} ${escapeHtml(label)} Fields</div>
-          <button class="wstyle-gen-btn" type="button" data-action="bfield-add" data-block="${escapeHtml(blockId)}">${icon("fa-plus")} Add Field</button>
+  const stackRows = inStack.map((b, i) => {
+    const off = typeof b.requires === "function" && !b.requires(state.profile);
+    const custom = !b.builtin;
+    let html = `
+      <div class="blk-row ${off ? "blk-row-off" : ""}">
+        <div class="blk-row-main">
+          <span class="blk-emoji">${escapeHtml(b.emoji || "📦")}</span>
+          <div>
+            <div class="blk-name">${escapeHtml(b.label || (b as unknown as CustomBlock).name || b.id)}${custom ? ` <span class="blk-custom-flag">custom</span>` : ""}</div>
+            <div class="blk-tag">&lt;${escapeHtml(b.tag)}&gt;${off ? " — its feature is switched off, so it is not sent" : ""}</div>
+          </div>
         </div>
-        <div class="mtab-callout">${icon("fa-circle-info")}<span>The template the model is asked for is generated from this list, so adding a field changes the prompt.</span></div>
-        ${fields.length ? fields.map((field, index) => `
-          <div class="bfield-row">
-            <input type="text" class="ps-modern-input" style="flex:2;" data-bind="statBlocks.${blockId}.fields.${index}.label" value="${escapeHtml(field.label)}" placeholder="Label" />
-            <select class="ps-modern-input" style="flex:1;" data-bind="statBlocks.${blockId}.fields.${index}.type">
-              ${["text", "meter", "number", "list"].map((type) => `<option value="${type}" ${field.type === type ? "selected" : ""}>${type}</option>`).join("")}
-            </select>
-            ${field.type === "meter" || field.type === "number"
-              ? `<input type="number" class="ps-modern-input" style="width:80px;" data-bind="statBlocks.${blockId}.fields.${index}.start" value="${field.start ?? 0}" title="Starting value" />`
-              : `<input type="text" class="ps-modern-input" style="flex:1;" data-bind="statBlocks.${blockId}.fields.${index}.hint" value="${escapeHtml(field.hint || "")}" placeholder="hint" />`}
-            <button type="button" class="ps-modern-btn secondary danger" title="Delete field" data-action="bfield-delete" data-block="${escapeHtml(blockId)}" data-index="${index}">${icon("fa-trash")}</button>
-          </div>`).join("")
-          : `<div class="dev-empty">No fields. This block emits nothing until it has at least one.</div>`}
+        <div class="blk-row-actions">
+          <button class="ws-btn-small blk-up" type="button" data-action="blk-move" data-id="${escapeHtml(b.id)}" data-dir="-1" ${i === 0 ? "disabled" : ""}>${icon("fa-arrow-up")}</button>
+          <button class="ws-btn-small blk-down" type="button" data-action="blk-move" data-id="${escapeHtml(b.id)}" data-dir="1" ${i === inStack.length - 1 ? "disabled" : ""}>${icon("fa-arrow-down")}</button>
+          <select class="ps-modern-input blk-vis" data-action="blk-vis" data-id="${escapeHtml(b.id)}">
+            ${BLOCK_VISIBILITY_CHOICES.map((o) => `<option value="${o.v}" ${(visOf(b) === "hidden" ? "hidden" : "open") === o.v ? "selected" : ""} title="${escapeHtml(o.hint)}">${o.label}</option>`).join("")}
+          </select>
+          ${b.builtin ? "" : `<button class="ws-btn-small blk-edit" type="button" data-action="blk-edit" data-id="${escapeHtml(b.id)}" style="color:var(--gold);">${icon("fa-pen")}</button>`}
+          <button class="ws-btn-small blk-remove" type="button" data-action="blk-remove" data-id="${escapeHtml(b.id)}" style="color:#ef4444;">${icon("fa-xmark")}</button>
+        </div>
       </div>`;
-  };
+
+    // World State is the one block with a setting of its own: on most turns it can
+    // send a shortened template and spend the full one only every few replies. It
+    // rides under its own row because it is meaningless apart from this block.
+    if (b.id === "world") {
+      const ws = state.profile.worldState;
+      html += `
+        <div class="blk-sub">
+          <div class="blk-sub-row">
+            <div>
+              <div class="blk-sub-label">Compact mode</div>
+              <div class="blk-sub-desc">Sends a shorter World State on most turns to save tokens.</div>
+            </div>
+            <div class="ps-toggle-card ${ws.compactEnabled ? "active" : ""}" id="blk_compact_toggle" data-action="toggle" data-path="worldState.compactEnabled" style="padding:2px; min-width:40px; background:transparent; border-color:${ws.compactEnabled ? "#10b981" : "var(--border-color)"}; cursor:pointer; border-radius:8px;">
+              <div class="ps-switch" style="transform: scale(0.7); ${ws.compactEnabled ? "background:#10b981;" : ""}"></div>
+            </div>
+          </div>
+          <div class="blk-sub-row" id="blk_freq_row" style="display:${ws.compactEnabled ? "flex" : "none"};">
+            <div>
+              <div class="blk-sub-label">Full state every</div>
+              <div class="blk-sub-desc">How often the complete template comes back.</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <input type="number" id="blk_full_freq" class="ps-modern-input" data-bind="worldState.fullFreq" min="1" value="${ws.fullFreq || 5}" style="width:60px; padding:4px; text-align:center; font-size:0.72rem;" />
+              <span style="font-size:0.68rem; color:var(--text-muted);">replies</span>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // Stat blocks are generated from a field list, so they get an editor for it.
+    if (b.id === "bonds" || b.id === "sheet") html += renderStatFieldEditor(b);
+    return html;
+  }).join("");
+
+  const pool = available
+    .map((b) => `<button class="blk-add" type="button" data-action="blk-add" data-id="${escapeHtml(b.id)}"><span>${escapeHtml((b as BlockDef).emoji || "📦")}</span> ${escapeHtml((b as BlockDef).label || (b as unknown as CustomBlock).name || b.id)}</button>`)
+    .join("");
 
   return `
-    ${tabHeader("Response Blocks", "Attach extra UI panels to every AI response.", "fa-cubes", "#10b981", `${state.profile.blocks.length} Active`, "#10b981", "fa-cubes")}
-    ${presetFeatureWarning(["response-blocks"])}
-    <div class="mtab-card-grid">
-      ${blocks.map((item: any) => moduleCard(item, state.profile.blocks.includes(item.id), "blocks", !!(activeMode && typeof activeMode[item.id] === "string" && activeMode[item.id].trim()))).join("")}
-      ${customAddons.length ? `<div style="grid-column: 1 / -1;"><div class="wstyle-section-head green" style="margin:8px 0;">${icon("fa-puzzle-piece")} Custom Engine Add-ons</div></div>${customAddons.map((item: any) => infoCard({ title: item.name, sub: `Custom Module -> [[${item.attachPoint}]]`, active: !!state.profile.toggles[item.id], action: "toggle", path: `toggles.${item.id}` })).join("")}` : ""}
+    <div class="mtab-header">
+      <div class="mtab-header-left">
+        <div class="mtab-header-icon" style="background: linear-gradient(135deg, #f59e0b, #b45309);">${icon("fa-cubes")}</div>
+        <div>
+          <h2>Blocks</h2>
+          <p>Everything in this list is sent as one master block at the end of the reply, and drawn in the chat as one collapsible card.</p>
+        </div>
+      </div>
+      <div class="mtab-header-badge" style="background: rgba(245,158,11,0.12); color:#f59e0b; border:1px solid rgba(245,158,11,0.25);">
+        ${icon("fa-layer-group")} ${inStack.length} in block
+      </div>
     </div>
 
-    <div class="wstyle-section-head green" style="margin-top:24px;">${icon("fa-layer-group")} Blocks Envelope</div>
     ${presetFeatureWarning(["blocks-envelope"])}
-    <div class="mtab-callout gold">${icon("fa-circle-info")}<span><strong>The stack is membership and order both.</strong> A block that is not in the stack is never emitted. An empty stack falls back to the legacy per-block hooks, so V7 presets keep working.</span></div>
 
-    <div class="mtab-panel">
-      <div class="mtab-panel-title gold">${icon("fa-list-ol")} Emission Order</div>
-      ${stack.order.length
-        ? `<div class="bstack-list">${stack.order.map(stackRow).join("")}</div>`
-        : `<div class="dev-empty">Nothing in the stack. Add a block below.</div>`}
-    </div>
+    <div class="blk-layout">
+      <div class="blk-col">
+        <div class="wstyle-section-head gold">${icon("fa-list-ol")} Inside the master block</div>
+        <div class="blk-stack">
+          ${inStack.length ? stackRows : `<div class="blk-empty">Nothing here yet. Add a block from the right.</div>`}
+        </div>
 
-    <div class="mtab-panel">
-      <div class="panel-heading-row">
-        <div class="mtab-panel-title gold">${icon("fa-plus")} Available Blocks</div>
-        <button class="wstyle-gen-btn" type="button" data-action="bcustom-new">${icon("fa-code")} New Custom Block</button>
+        <div class="wstyle-section-head green" style="margin-top:18px;">${icon("fa-plus")} Add a block</div>
+        <div class="blk-pool">
+          ${available.length ? pool : `<div class="blk-empty">Every block is already in.</div>`}
+          <button class="blk-add blk-add-new" type="button" data-action="blk-new">${icon("fa-wand-magic-sparkles")} Create custom block</button>
+        </div>
       </div>
-      <div class="mtab-card-grid compact">
-        ${arrangeableBlocks().filter((def) => !inStack(def.id)).map((def) => infoCard({
-          title: `${def.emoji || ""} ${def.label}`,
-          sub: `<${def.tag}>`,
-          active: false,
-          action: "bstack-toggle",
-          value: def.id
-        })).join("")}
-        ${(stack.custom || []).filter((def) => !inStack(def.id)).map((def) => infoCard({
-          title: def.name,
-          sub: `<${def.tag}> — custom`,
-          active: false,
-          action: "bstack-toggle",
-          value: def.id
-        })).join("")}
-      </div>
-      ${(stack.custom || []).length ? `
-        <div class="wstyle-section-head purple" style="margin-top:16px;">${icon("fa-code")} Your Custom Blocks</div>
-        ${stack.custom.map((def) => `
-          <div class="bfield-row">
-            <input type="text" class="ps-modern-input" style="flex:1;" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.name" value="${escapeHtml(def.name)}" placeholder="Name" />
-            <input type="text" class="ps-modern-input" style="flex:1;" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.tag" value="${escapeHtml(def.tag)}" placeholder="Tag" />
-            <button type="button" class="ps-modern-btn secondary danger" data-action="bcustom-delete" data-id="${escapeHtml(def.id)}">${icon("fa-trash")}</button>
-          </div>
-          <textarea class="ps-modern-input textarea-sm" data-bind="blockStack.custom.${stack.custom.indexOf(def)}.content" placeholder="What the model should put inside this tag.">${escapeHtml(def.content)}</textarea>`).join("")}` : ""}
-    </div>
 
-    ${state.profile.blocks.includes("info") ? `
-    <div class="mtab-panel">
-      <div class="mtab-panel-title gold">${icon("fa-compress")} Compact World State</div>
-      <div id="ws_compact_card" class="mtab-toggle-row ${ws.compactEnabled ? "active" : ""}" data-action="toggle" data-path="worldState.compactEnabled">
-        <div class="toggle-info"><div class="toggle-label">${icon("fa-compress")} Compact Mode</div><div class="toggle-desc">Emit a short World State most turns and the full one every Nth reply. Cuts the running cost of the block without letting it go stale.</div></div>
-        <div class="ps-switch"></div>
+      <div class="blk-col">
+        <div class="wstyle-section-head purple">${icon("fa-eye")} Preview</div>
+        <div class="blk-preview-note">This is the card the chat draws. Click a header to fold it.</div>
+        <div class="blk-preview">${renderBlocksPreview()}</div>
       </div>
-      ${ws.compactEnabled ? `<div class="mtab-setting-row">${settingText("Full Block Every", "Replies between full World State blocks.")}<input type="number" class="ps-modern-input" style="width:110px;" data-bind="worldState.fullFreq" value="${ws.fullFreq}" min="2" /></div>` : ""}
-    </div>` : ""}
+    </div>`;
+}
 
-    ${inStack("bonds") ? statEditor("bonds", "Bonds") : ""}
-    ${inStack("sheet") ? statEditor("sheet", "Character Sheet") : ""}`;
+/**
+ * The preview card. The ST build renders this through the same code the chat
+ * uses; this port has no chat renderer yet, so it draws the tags and bodies the
+ * envelope would actually emit rather than inventing a different shape.
+ */
+function renderBlocksPreview(): string {
+  const active = activeBlocks(state.profile);
+  if (!active.length) return `<div class="blk-empty">Nothing in the block yet.</div>`;
+  return active.map((b) => {
+    const def = b as BlockDef;
+    return `
+      <div class="blk-preview-tab">
+        <span class="blk-emoji">${escapeHtml(def.emoji || "📦")}</span>
+        <span class="blk-name">${escapeHtml(def.label || (b as CustomBlock).name || b.id)}</span>
+        <span class="blk-tag">&lt;${escapeHtml(b.tag)}&gt;</span>
+      </div>`;
+  }).join("");
 }
 
 function renderThinking(): string {
@@ -1655,82 +1832,212 @@ function renderThinking(): string {
 
 function renderStory(): string {
   const sp = state.profile.storyPlan;
+
+  const genreOptions = Object.entries(SD_GENRES)
+    .map(([id, g]) => `<option value="${id}" ${sp.primaryGenre === id ? "selected" : ""}>${escapeHtml(g.label)}</option>`)
+    .join("");
+
+  const flavorChips = SD_FLAVORS
+    .map((f) => `<button type="button" class="sd-chip ${sp.flavorTags.includes(f) ? "active" : ""}" data-action="sd-flavor" data-value="${escapeHtml(f)}">${escapeHtml(f)}</button>`)
+    .join("");
+
   return `
-    ${tabHeader("Story Planner", "Brainstorm and track plot milestones automatically.", "fa-map-location-dot", "#f59e0b", sp.enabled ? "Enabled" : "Disabled", sp.enabled ? "#10b981" : "#a1a1aa", sp.enabled ? "fa-circle-check" : "fa-circle-xmark")}
+    <div class="mtab-header">
+      <div class="mtab-header-left">
+        <div class="mtab-header-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">${icon("fa-clapperboard")}</div>
+        <div>
+          <h2>Story Director</h2>
+          <p>Direct the narrative. Shape what happens next.</p>
+        </div>
+      </div>
+      <div id="sd_header_badge" class="mtab-header-badge" style="background: ${sp.enabled ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)"}; color: ${sp.enabled ? "#10b981" : "var(--text-muted)"}; border: 1px solid ${sp.enabled ? "rgba(16,185,129,0.25)" : "var(--border-color)"};">
+        ${icon(sp.enabled ? "fa-circle-check" : "fa-circle-xmark")} ${sp.enabled ? "Enabled" : "Disabled"}
+      </div>
+    </div>
+
     ${presetFeatureWarning(["story-planner"])}
-    <div id="sp_enable_card" class="mtab-toggle-row ${sp.enabled ? "active" : ""}" data-action="toggle" data-path="storyPlan.enabled" style="margin-bottom: 20px;">
-      <div class="toggle-info"><div class="toggle-label">${icon("fa-map-location-dot")} Enable Story Planner</div><div class="toggle-desc">Just enable and hit generate plan now and let the ai do the rest.</div></div>
+
+    <div class="mtab-toggle-row ${sp.enabled ? "active" : ""}" id="sd_enable_card" data-action="toggle" data-path="storyPlan.enabled" style="margin-bottom: 20px;">
+      <div class="toggle-info">
+        <div class="toggle-label">${icon("fa-clapperboard")} Enable Story Director</div>
+        <div class="toggle-desc">Analyze your RP and generate narrative directives that steer the plot forward.</div>
+      </div>
       <div class="ps-switch"></div>
     </div>
-    <div id="sp_main_content" style="display:${sp.enabled ? "block" : "none"};">
-    <div class="mtab-panel">
-      <div class="mtab-panel-title gold">${icon("fa-gears")} Engine Settings</div>
-      <div class="mtab-setting-row">${settingText("Generation Backend", "")}<select id="sp_backend" class="ps-modern-input" data-bind="storyPlan.backend" style="width: 220px; cursor: pointer;">${presetBackendOptions("engine").map(([id, label]) => `<option value="${id}" ${sp.backend === id ? "selected" : ""}>${label}</option>`).join("")}</select></div>
-      <div class="mtab-setting-row">${settingText("Auto-Trigger Mode", "Generate new plans automatically.")}<div style="display:flex; gap:8px; align-items:center;"><select id="sp_trigger" class="ps-modern-input" data-bind="storyPlan.triggerMode" style="width: 150px; cursor: pointer;"><option value="manual" ${sp.triggerMode === "manual" ? "selected" : ""}>Manual Only</option><option value="frequency" ${sp.triggerMode === "frequency" ? "selected" : ""}>Every X Replies</option></select><input type="number" id="sp_freq" class="ps-modern-input" data-bind="storyPlan.autoFreq" value="${sp.autoFreq}" min="1" style="width: 70px; text-align: center; display: ${sp.triggerMode === "frequency" ? "block" : "none"};" /></div></div>
-    </div>
-    <div class="mtab-panel">
-      <div class="mtab-panel-title gold">${icon("fa-masks-theater")} Director Settings</div>
-      <div class="mtab-callout">${icon("fa-circle-info")}<span>The standing brief the Story Maker writes against. It shapes every directive it generates from here on.</span></div>
-      <div class="mtab-setting-row">${settingText("Primary Genre", "The conventions the arc plays straight.")}<select class="ps-modern-input" data-bind="storyPlan.primaryGenre" style="width:240px; cursor:pointer;">
-        ${Object.entries(SD_GENRES).map(([id, genre]) => `<option value="${id}" ${sp.primaryGenre === id ? "selected" : ""}>${escapeHtml(genre.label)}</option>`).join("")}
-      </select></div>
-      <div class="mtab-hint" style="margin:-6px 0 12px 0;">${escapeHtml(SD_GENRES[sp.primaryGenre]?.desc || "")}</div>
-      <div class="mtab-setting-row">${settingText("Pacing", "How fast the arc escalates.")}<select class="ps-modern-input" data-bind="storyPlan.pacing" style="width:170px; cursor:pointer;">
-        ${SD_PACING.map((id) => `<option value="${id}" ${sp.pacing === id ? "selected" : ""}>${id.charAt(0).toUpperCase()}${id.slice(1)}</option>`).join("")}
-      </select></div>
-      <div class="mtab-setting-row">${settingText("Content Rating", "Leave on None to let the story decide.")}<select class="ps-modern-input" data-bind="storyPlan.contentRating" style="width:170px; cursor:pointer;">
-        ${SD_CONTENT_RATINGS.map((id) => `<option value="${id}" ${sp.contentRating === id ? "selected" : ""}>${id === "none" ? "None" : id.charAt(0).toUpperCase() + id.slice(1)}</option>`).join("")}
-      </select></div>
-      <div class="wstyle-section-head purple" style="margin-top:14px;">${icon("fa-puzzle-piece")} Flavor Elements</div>
-      <div class="cfg-chips">
-        ${SD_FLAVORS.map((flavor) => `<button type="button" class="cfg-chip ${sp.flavorTags.includes(flavor) ? "active" : ""}" data-action="sp-flavor" data-value="${escapeHtml(flavor)}">${escapeHtml(flavor)}</button>`).join("")}
+
+    <div id="sd_main_content" style="display: ${sp.enabled ? "block" : "none"};">
+
+      <div class="mtab-panel">
+        <div class="mtab-panel-title gold">${icon("fa-sliders")} Director's Console</div>
+
+        <div class="sd-setting-group">
+          <div class="sd-setting-label">Content Rating</div>
+          <div class="sd-rating-pills">
+            <button type="button" class="sd-pill ${sp.contentRating === "none" ? "active" : ""}" data-action="select" data-path="storyPlan.contentRating" data-value="none">${icon("fa-infinity")} No Limit</button>
+            <button type="button" class="sd-pill ${sp.contentRating === "sfw" ? "active" : ""}" data-action="select" data-path="storyPlan.contentRating" data-value="sfw">${icon("fa-shield-halved")} SFW</button>
+            <button type="button" class="sd-pill ${sp.contentRating === "nsfw" ? "active" : ""}" data-action="select" data-path="storyPlan.contentRating" data-value="nsfw">${icon("fa-fire")} NSFW</button>
+          </div>
+        </div>
+
+        <div class="sd-setting-group">
+          <div class="sd-setting-label">Pacing</div>
+          <div class="sd-pacing-selector">
+            <button type="button" class="sd-pacing-btn ${sp.pacing === "slowburn" ? "active" : ""}" data-action="select" data-path="storyPlan.pacing" data-value="slowburn">
+              ${icon("fa-moon")}
+              <span class="sd-pacing-name">Slow Burn</span>
+              <span class="sd-pacing-desc">Character moments, no rush</span>
+            </button>
+            <button type="button" class="sd-pacing-btn ${sp.pacing === "natural" ? "active" : ""}" data-action="select" data-path="storyPlan.pacing" data-value="natural">
+              ${icon("fa-wind")}
+              <span class="sd-pacing-name">Natural</span>
+              <span class="sd-pacing-desc">Organic flow, balanced</span>
+            </button>
+            <button type="button" class="sd-pacing-btn ${sp.pacing === "accelerate" ? "active" : ""}" data-action="select" data-path="storyPlan.pacing" data-value="accelerate">
+              ${icon("fa-forward-fast")}
+              <span class="sd-pacing-name">Accelerate</span>
+              <span class="sd-pacing-desc">Push forward, big moves</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="sd-setting-group">
+          <div class="sd-setting-label">Primary Genre</div>
+          <select id="sd_genre" class="ps-modern-input" data-bind="storyPlan.primaryGenre" style="width: 100%; cursor: pointer;">
+            ${genreOptions}
+          </select>
+          <div class="sd-genre-desc" id="sd_genre_desc">${escapeHtml(SD_GENRES[sp.primaryGenre]?.desc || "")}</div>
+        </div>
+
+        <div class="sd-setting-group" style="margin-bottom: 0;">
+          <div class="sd-setting-label">Flavor Tags <span class="sd-label-hint">(pick up to 3)</span></div>
+          <div class="sd-chip-container" id="sd_flavor_chips">
+            ${flavorChips}
+          </div>
+        </div>
       </div>
-      <div class="mtab-setting-row" style="margin-top:14px;">${settingText("Director's Note", "A standing instruction for every directive.")}</div>
-      <textarea class="ps-modern-input textarea-sm" data-bind="storyPlan.directorsNote" placeholder="e.g. never let Maya win; keep the brother off-screen until act three.">${escapeHtml(sp.directorsNote)}</textarea>
-      ${toggleGeneric(`${icon("fa-unlock")} Unrestricted Content`, "storyPlan.unrestrictedContent", sp.unrestrictedContent, "Adds the unrestricted-content block to the directive injection. Only affects what the Director is allowed to plan.", true)}
-    </div>
-    <div class="mtab-panel">
-      <div class="panel-heading-row">
-        <div class="mtab-panel-title gold">${icon("fa-book-open")} Current Directive</div>
-        <button id="sp_btn_generate" class="wstyle-gen-btn" type="button" data-action="story-generate">${icon("fa-bolt")} ${sp.currentPlan.trim() ? "Evolve Directive" : "Generate Directive"}</button>
+
+      <div class="mtab-toggle-row ${sp.unrestrictedContent ? "active" : ""}" id="sd_unrestricted_card" data-action="toggle" data-path="storyPlan.unrestrictedContent">
+        <div class="toggle-info">
+          <div class="toggle-label">${icon("fa-lock-open")} Unrestricted Content</div>
+          <div class="toggle-desc">Inject a content policy override into the story context. Enables darker, more explicit narrative directions without AI refusals.</div>
+        </div>
+        <div class="ps-switch"></div>
       </div>
-      <textarea id="sp_current_plan" class="ps-modern-input textarea-xl" data-bind="storyPlan.currentPlan" placeholder="The generated narrative blueprint will appear here.">${escapeHtml(sp.currentPlan)}</textarea>
-      <div class="mtab-callout">${icon("fa-circle-info")}<span>An existing directive is fed back in and evolved rather than replaced. A tracker is appended to each response automatically.</span></div>
-    </div>
+
+      <div class="mtab-panel">
+        <div class="mtab-panel-title gold">${icon("fa-pen-fancy")} Director's Note</div>
+        <div class="sd-directors-note-hint">
+          ${icon("fa-lightbulb")}
+          Tell the AI what you want to happen. It will weave your instruction into a long-term plot — not a hard cut. Leave empty to let the AI decide freely.
+        </div>
+        <textarea id="sd_directors_note" class="ps-modern-input sd-directors-note-input" data-bind="storyPlan.directorsNote" placeholder="e.g. &quot;I want the maid from my past to show up again&quot; or &quot;make the rival discover the secret&quot; or &quot;I want this NPC to betray me&quot;">${escapeHtml(sp.directorsNote || "")}</textarea>
+      </div>
+
+      <div class="mtab-panel">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+          <div class="mtab-panel-title gold" style="margin-bottom:0;">${icon("fa-scroll")} Current Directive</div>
+          <div style="display: flex; gap: 8px;">
+            <button id="sd_btn_generate" class="wstyle-gen-btn" type="button" data-action="story-generate" style="padding: 8px 18px; font-size: 0.78rem;">${icon("fa-bolt")} Generate Directive</button>
+            <button id="sd_btn_evolve" class="wstyle-gen-btn" type="button" data-action="story-evolve" style="padding: 8px 18px; font-size: 0.78rem; background: rgba(139, 92, 246, 0.15); border-color: rgba(139, 92, 246, 0.3);" ${sp.currentPlan ? "" : "disabled"}>${icon("fa-arrows-rotate")} Evolve</button>
+          </div>
+        </div>
+        <textarea id="sd_current_plan" class="ps-modern-input sd-directive-output" data-bind="storyPlan.currentPlan" placeholder="Your narrative directive will appear here after generation.">${escapeHtml(sp.currentPlan || "")}</textarea>
+        <div class="mtab-callout">
+          ${icon("fa-circle-info")}
+          <span>This directive is injected via <code>[[storyplan]]</code>. A feedback tracker is appended via <code>[[storytracker]]</code>.</span>
+        </div>
+      </div>
+
+      <div class="mtab-panel">
+        <div class="mtab-panel-title gold">${icon("fa-gears")} Engine Settings</div>
+        <div class="mtab-setting-row">
+          <div class="set-info"><div class="set-label">Generation Backend</div></div>
+          <select id="sd_backend" class="ps-modern-input" data-bind="storyPlan.backend" style="width: 220px; cursor: pointer;">
+            ${presetBackendOptions("engine").map(([id, label]) => `<option value="${id}" ${sp.backend === id ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </div>
+        <div class="mtab-setting-row">
+          <div class="set-info">
+            <div class="set-label">Context Limit</div>
+            <div class="set-desc">How much chat history the Director reads to analyze the plot.</div>
+          </div>
+          <select id="sd_context_limit" class="ps-modern-input" data-bind="storyPlan.contextLimit" style="width: 220px; cursor: pointer;">
+            <option value="100" ${sp.contextLimit === 100 ? "selected" : ""}>Last 100 Messages</option>
+            <option value="0" ${sp.contextLimit === 0 ? "selected" : ""}>Full Chat History</option>
+          </select>
+        </div>
+        <div class="mtab-setting-row">
+          <div class="set-info">
+            <div class="set-label">Auto-Trigger Mode</div>
+            <div class="set-desc">When should the Director evolve the story?</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <select id="sd_trigger" class="ps-modern-input" data-bind="storyPlan.triggerMode" style="width: 170px; cursor: pointer;">
+              <option value="manual" ${sp.triggerMode === "manual" ? "selected" : ""}>Manual Only</option>
+              <option value="auto" ${sp.triggerMode === "auto" ? "selected" : ""}>Auto (Smart Status)</option>
+              <option value="frequency" ${sp.triggerMode === "frequency" ? "selected" : ""}>Every X Replies (Safety Net)</option>
+            </select>
+            <input type="number" id="sd_freq" class="ps-modern-input" data-bind="storyPlan.autoFreq" value="${sp.autoFreq}" min="1" style="width: 60px; text-align: center; display: ${sp.triggerMode === "frequency" ? "block" : "none"};" title="Fallback safety net interval" />
+          </div>
+        </div>
+      </div>
     </div>`;
 }
 
 function renderBanList(): string {
+  const banList = state.profile.banList || [];
+
+  const tags = banList.length
+    ? banList.map((phrase) => `
+        <div class="mtab-ban-item" data-action="ban-remove" data-value="${escapeHtml(phrase)}">
+          <span style="padding-right: 15px;">${escapeHtml(phrase)}</span>
+          ${icon("fa-xmark")}
+        </div>`).join("")
+    : `<span style="color: var(--text-muted); font-size: 0.8rem; font-style: italic;">No phrases banned yet.</span>`;
+
   return `
-    ${tabHeader("Dynamic Ban List", "Detect and ban overused phrases from AI responses.", "fa-ban", "#ef4444", `${state.profile.banList.length} Banned`, "#ef4444", "fa-ban")}
+    ${tabHeader("Dynamic Ban List", "Detect and ban overused phrases from AI responses.", "fa-ban", "#ef4444", `${banList.length} Banned`, "#ef4444", "fa-ban")}
     ${presetFeatureWarning(["dynamic-ban-list"])}
+
     <div class="mtab-panel" style="margin-bottom:16px;">
-      <div class="panel-heading-row">
-        <div class="mtab-panel-title purple">${icon("fa-radar")} AI Slop Detector</div>
-        <button id="ps_btn_scan_slop" class="wstyle-gen-btn purple-bg" type="button" data-action="ban-analyze">${icon("fa-radar")} Analyze Chat</button>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div class="mtab-panel-title purple" style="margin-bottom:0;">${icon("fa-radar")} AI Slop Detector</div>
+        <button id="ps_btn_scan_slop" class="wstyle-gen-btn" type="button" data-action="ban-analyze" style="padding: 8px 18px; font-size: 0.78rem; background: linear-gradient(135deg, #a855f7, #7c3aed);">${icon("fa-radar")} Analyze Chat</button>
       </div>
-      <div class="mtab-setting-row">${settingText("Generator Backend", "Choose how to generate the analysis.")}<select id="ban_list_backend" class="ps-modern-input" data-bind="banListBackend" style="width: 200px; cursor: pointer;">${presetBackendOptions("engine").map(([id, label]) => `<option value="${id}" ${state.profile.banListBackend === id ? "selected" : ""}>${label}</option>`).join("")}</select></div>
+      <div class="mtab-setting-row">
+        <div class="set-info">
+          <div class="set-label">Generator Backend</div>
+          <div class="set-desc">Choose how to generate the analysis.</div>
+        </div>
+        <select id="ban_list_backend" class="ps-modern-input" data-bind="banListBackend" style="width: 200px; cursor: pointer;">
+          ${presetBackendOptions("engine").map(([id, label]) => `<option value="${id}" ${state.profile.banListBackend === id ? "selected" : ""}>${label}</option>`).join("")}
+        </select>
+      </div>
     </div>
+
     <div class="mtab-panel" style="margin-bottom:16px;">
       <div class="mtab-panel-title red">${icon("fa-plus-circle")} Add Phrase</div>
-      <div class="inline-form">
-        <input class="ps-modern-input" placeholder="Manually add a phrase to ban..." id="ps_manual_ban_input">
-        <button id="ps_btn_add_ban" class="ps-modern-btn secondary" type="button" data-action="ban-add">Add</button>
+      <div style="display: flex; gap: 10px;">
+        <input type="text" id="ps_manual_ban_input" class="ps-modern-input" placeholder="Manually add a phrase to ban…" style="flex: 1;" />
+        <button id="ps_btn_add_ban" class="ps-modern-btn secondary" type="button" data-action="ban-add" style="padding: 0 15px;">Add</button>
       </div>
     </div>
-    <div class="panel-heading-row">
-      <div class="wstyle-section-head red">${icon("fa-list")} Active Banned Phrases</div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <div class="wstyle-section-head red" style="margin-bottom:0;">${icon("fa-list")} Active Banned Phrases</div>
       <div class="mtab-btn-row">
         <input type="file" id="ps_import_bans_file" accept=".json" style="display: none;">
-        <button id="ps_btn_import_bans" class="ps-modern-btn secondary mini blue-text" type="button" data-action="ban-import">${icon("fa-file-import")} Import</button>
-        <button id="ps_btn_export_bans" class="ps-modern-btn secondary mini green-text" type="button" data-action="ban-export">${icon("fa-file-export")} Export</button>
-        <button id="ps_btn_clear_bans" class="ps-modern-btn secondary danger mini" type="button" data-action="ban-clear">${icon("fa-trash-can")} Clear All</button>
+        <button id="ps_btn_import_bans" class="ps-modern-btn secondary" type="button" data-action="ban-import" style="padding: 4px 10px; font-size: 0.72rem; color: #3b82f6; border-color: rgba(59, 130, 246, 0.3);">${icon("fa-file-import")} Import</button>
+        <button id="ps_btn_export_bans" class="ps-modern-btn secondary" type="button" data-action="ban-export" style="padding: 4px 10px; font-size: 0.72rem; color: #10b981; border-color: rgba(16, 185, 129, 0.3);">${icon("fa-file-export")} Export</button>
+        <button id="ps_btn_clear_bans" class="ps-modern-btn secondary" type="button" data-action="ban-clear" style="padding: 4px 10px; font-size: 0.72rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">${icon("fa-trash-can")} Clear All</button>
       </div>
     </div>
-    <div id="ps_banlist_container" class="mtab-card-list dashed">
-      ${state.profile.banList.length ? state.profile.banList.map((item) => `<button type="button" class="mtab-ban-item" data-action="ban-remove" data-value="${escapeHtml(item)}"><span>${escapeHtml(item)}</span>${icon("fa-xmark")}</button>`).join("") : `<span class="empty-text">No phrases banned yet.</span>`}
-    </div>
-    <div class="mtab-callout purple">${icon("fa-circle-info")} <span>This is a beta feature. Don't complain if you have to generate more than once.</span></div>`;
+    <div id="ps_banlist_container" class="mtab-card-list" style="min-height: 50px; padding: 10px; border: 1px dashed var(--border-color); border-radius: 10px; margin-bottom: 16px;">${tags}</div>
+
+    <div class="mtab-callout purple" style="margin-top: 16px;">
+      ${icon("fa-circle-info")}
+      <span>This is a beta feature. Don't complain if you have to generate more than once.</span>
+    </div>`;
 }
 
 function renderImage(): string {
@@ -2598,6 +2905,17 @@ const faLibrary: Record<string, IconDefinition> = {
   faArrowUp,
   faCompress,
   faListOl,
+  faClapperboard,
+  faInfinity,
+  faFire,
+  faMoon,
+  faWind,
+  faForwardFast,
+  faLockOpen,
+  faPenFancy,
+  faBoxOpen,
+  faChevronDown,
+  faRulerHorizontal,
   faArrowsRotate,
   faBan,
   faBolt,
@@ -2838,6 +3156,2986 @@ function icon(name: string): string {
   };
   return `<svg class="meg-svg meg-${escapeHtml(name)}" viewBox="0 0 24 24" aria-hidden="true">${paths[key] || paths.spark}</svg>`;
 }
+
+/**
+ * The SillyTavern build's stylesheet, copied verbatim.
+ *
+ * Loaded after ST_PARITY_CSS so the original rules win wherever the two
+ * disagree — the goal here is to look identical to the ST panels, not to
+ * improve on them. Only the handful of selectors that targeted
+ * SillyTavern's own DOM were dropped.
+ */
+const BETA_STYLE_CSS = String.raw`
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --bg-main: #0e0e11;
+    --bg-panel: #18181b99;
+    --border-color: #27272a;
+    --text-main: #f4f4f5;
+    --text-muted: #a1a1aa;
+    --accent-color: #ffffff;
+    --gold: #f59e0b;
+}
+
+.ps-modern-modal.app-container {
+    width: 1050px;
+    max-width: 95vw;
+    height: 85vh;
+    max-height: 850px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    color: var(--text-main);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.main-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.hero-banner {
+    height: 190px; 
+    width: 100%;
+    background-position: center 25%;
+    background-size: cover;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.9) 0%, rgba(24, 24, 27, 0.4) 50%, rgba(24, 24, 27, 0.8) 100%);
+}
+
+.hero-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(24, 24, 27, 0.95) 0%, transparent 80%);
+}
+
+.top-app-bar {
+    position: relative;
+    z-index: 2;
+    padding: 20px 30px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.app-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.hero-content {
+    display: none !important; 
+}
+
+.hero-content .status {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #a855f7;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.hero-content .name {
+    font-size: 1.7rem; 
+    font-weight: 800;
+    margin: 0;
+    text-shadow: 0 4px 10px rgba(0, 0, 0, 0.8);
+    color: #fff;
+    line-height: 1.1;
+}
+
+.dock {
+    position: absolute;
+    top: 20px;
+    bottom: 20px;
+    left: 20px;
+    width: 60px;
+    background: rgba(18, 18, 20, 0.7);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    padding-top: 15px;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    white-space: nowrap;
+    z-index: 50;
+}
+
+.dock:hover {
+    width: 240px;
+    box-shadow: 10px 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.dock-icon {
+    display: flex;
+    align-items: center;
+    width: 240px;
+    height: 50px;
+    padding: 0 20px;
+    color: #a1a1aa;
+    cursor: pointer;
+    transition: 0.2s;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+}
+
+.dock-icon i {
+    width: 20px;
+    text-align: center;
+    margin-right: 15px;
+    font-size: 1.1rem;
+}
+
+.dock-icon:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    margin-left: 10px;
+    width: 220px;
+}
+
+.dock-icon.active {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.15);
+    border-radius: 8px;
+    margin-left: 10px;
+    width: 220px;
+}
+
+.dock-icon span {
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.dock:hover .dock-icon span {
+    opacity: 1;
+    transition-delay: 0.1s;
+}
+
+.main-content {
+    padding: 0 40px 40px 100px;
+    margin-top: -80px; 
+    position: relative;
+    z-index: 10;
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.main-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.main-content::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+.ps-rule-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.ps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.ps-card {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.ps-card:hover {
+    border-color: #52525b;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.ps-card.selected {
+    border-color: var(--text-main);
+    background: var(--text-main);
+    color: #000;
+}
+
+.ps-card.selected .ps-card-title {
+    color: #000;
+}
+
+.ps-card.selected .ps-card-desc,
+.ps-card.selected div {
+    color: #444;
+}
+
+.ps-card-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 6px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ps-card-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-top: 4px;
+}
+
+.ps-rec-text {
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: var(--gold);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: uppercase;
+    margin: 0;
+}
+
+.ps-toggle-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 18px 24px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.ps-toggle-card:hover {
+    border-color: #52525b;
+}
+
+.ps-toggle-card.active {
+    border-color: var(--accent-color);
+    background: #27272a;
+}
+
+.ps-switch {
+    width: 44px;
+    height: 24px;
+    background: #3f3f46;
+    border-radius: 12px;
+    position: relative;
+    transition: 0.3s;
+}
+
+.ps-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: #fff;
+    border-radius: 50%;
+    transition: 0.3s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.ps-toggle-card.active .ps-switch {
+    background: var(--accent-color);
+}
+
+.ps-toggle-card.active .ps-switch::after {
+    left: 22px;
+    background: #000;
+}
+
+.ps-modern-tag {
+    display: inline-block;
+    padding: 6px 14px;
+    margin: 4px;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-main);
+    transition: 0.2s;
+}
+
+.ps-modern-tag:hover {
+    border-color: #52525b;
+    background: #27272a;
+}
+
+.ps-modern-tag.selected {
+    background: var(--text-main);
+    color: #000;
+    border-color: var(--text-main);
+    font-weight: 600;
+}
+
+.ps-modern-input {
+    width: 100%;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    outline: none;
+    transition: 0.2s;
+    box-sizing: border-box;
+}
+
+.ps-modern-input:focus {
+    border-color: var(--text-muted);
+    background: var(--bg-panel);
+}
+
+.ps-modern-btn {
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+}
+
+.ps-modern-btn.primary {
+    background: var(--text-main);
+    color: #000;
+    border: none;
+}
+
+.ps-modern-btn.primary:hover:not(:disabled) {
+    background: #d4d4d8;
+    transform: translateY(-1px);
+}
+
+.ps-modern-btn.secondary {
+    background: rgba(0, 0, 0, 0.5);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    backdrop-filter: blur(5px);
+}
+
+.ps-modern-btn.secondary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #52525b;
+}
+
+.ps-modern-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ps-tooltip-title {
+    color: var(--gold);
+    font-weight: 700;
+}
+
+.wstyle-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px; 
+    padding-bottom: 12px; 
+    border-bottom: 1px solid var(--border-color);
+}
+
+.wstyle-header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.wstyle-header-icon {
+    width: 34px; 
+    height: 34px; 
+    font-size: 0.9rem; 
+    border-radius: 8px;
+    background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+}
+
+.wstyle-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--text-main);
+    letter-spacing: -0.02em;
+}
+
+.wstyle-header p {
+    display: none;
+}
+
+.wstyle-active-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.wstyle-active-badge.off {
+    background: rgba(161, 161, 170, 0.1);
+    color: var(--text-muted);
+    border-color: var(--border-color);
+}
+
+.wstyle-active-badge i {
+    font-size: 0.65rem;
+}
+
+.wstyle-filters {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    padding: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.wstyle-filter-pill {
+    padding: 8px 18px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.wstyle-filter-pill:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.wstyle-filter-pill.active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.wstyle-filter-pill .pill-count {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.wstyle-filter-pill.active .pill-count {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.wstyle-section-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0 12px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+}
+
+.wstyle-section-head::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, var(--border-color), transparent);
+}
+
+.wstyle-section-head i {
+    font-size: 0.7rem;
+}
+
+.wstyle-section-head.gold {
+    color: var(--gold);
+}
+
+.wstyle-section-head.green {
+    color: #10b981;
+}
+
+.wstyle-section-head.purple {
+    color: #a855f7;
+}
+
+.wstyle-section-head.blue {
+    color: #3b82f6;
+}
+
+.wstyle-section-head.red {
+    color: #ef4444;
+}
+
+.wstyle-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wstyle-card:hover {
+    border-color: #52525b;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.wstyle-card .card-accent {
+    height: 3px;
+    width: 100%;
+    background: linear-gradient(90deg, var(--border-color), transparent);
+    transition: background 0.3s ease;
+}
+
+.wstyle-card:hover .card-accent {
+    background: linear-gradient(90deg, #a855f7, #6366f1, transparent);
+}
+
+.wstyle-card.active .card-accent {
+    background: linear-gradient(90deg, #10b981, #059669) !important;
+}
+
+.wstyle-card .card-body {
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.wstyle-card .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.wstyle-card .card-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wstyle-card .card-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.wstyle-card .card-rule {
+    font-size: 0.73rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    max-height: 52px;
+    overflow: hidden;
+    line-height: 1.5;
+    -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+    mask-image: linear-gradient(to bottom, #000 60%, transparent);
+}
+
+.wstyle-card .card-status {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.wstyle-card .card-status.active-status {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.wstyle-card .card-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.wstyle-card .card-actions button {
+    padding: 5px 12px;
+    font-size: 0.7rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.wstyle-card .card-actions button:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: #52525b;
+    color: var(--text-main);
+}
+
+.wstyle-card .card-actions button.act-delete:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+
+.wstyle-card .card-actions button.act-regen:hover {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+    color: var(--gold);
+}
+
+.wstyle-card.active {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.04);
+}
+
+.wstyle-card.active .card-title {
+    color: #10b981;
+}
+
+.wstyle-off-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    margin-bottom: 8px;
+}
+
+.wstyle-off-card:hover {
+    border-color: #52525b;
+}
+
+.wstyle-off-card.active {
+    border-color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.wstyle-off-card .off-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wstyle-off-card .off-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.wstyle-off-card.active .off-icon {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.wstyle-dnr-panel {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.wstyle-dnr-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.wstyle-dnr-header:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.wstyle-dnr-header .dnr-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wstyle-dnr-header .dnr-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gold);
+    font-size: 0.95rem;
+}
+
+.wstyle-dnr-body {
+    padding: 0 20px 20px;
+    display: none;
+}
+
+.wstyle-dnr-body.open {
+    display: block;
+}
+
+.wstyle-dnr-slider-track {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.wstyle-dnr-slider-track input[type="range"] {
+    flex: 1;
+    accent-color: var(--gold);
+    cursor: pointer;
+}
+
+.wstyle-dnr-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+    min-width: 100px;
+}
+
+.wstyle-dnr-label.narr {
+    color: #a855f7;
+    text-align: right;
+}
+
+.wstyle-dnr-label.dial {
+    color: #10b981;
+}
+
+.wstyle-gen-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-main);
+    border: 1px dashed rgba(168, 85, 247, 0.3);
+    border-radius: 14px;
+    padding: 18px 20px;
+    gap: 16px;
+    transition: all 0.25s ease;
+}
+
+.wstyle-gen-card:hover {
+    border-color: rgba(168, 85, 247, 0.5);
+    background: rgba(168, 85, 247, 0.03);
+}
+
+.wstyle-gen-card .gen-info {
+    flex: 1;
+}
+
+.wstyle-gen-card .gen-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.wstyle-gen-card .gen-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.wstyle-gen-btn {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-weight: 800;
+    font-size: 0.78rem;
+    background: linear-gradient(135deg, #a855f7, #6366f1);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: all 0.25s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25);
+}
+
+.wstyle-gen-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(168, 85, 247, 0.35);
+}
+
+.wstyle-gen-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.wstyle-create-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    border: 1px dashed rgba(16, 185, 129, 0.3);
+    border-radius: 14px;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.25s;
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.wstyle-create-card:hover {
+    border-color: rgba(16, 185, 129, 0.5);
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.04);
+}
+
+.wstyle-editor-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 16px 20px;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    margin-bottom: 20px;
+}
+
+.wstyle-editor-bar input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-main);
+    font-size: 1.15rem;
+    font-weight: 800;
+    font-family: inherit;
+    outline: none;
+    letter-spacing: -0.02em;
+}
+
+.wstyle-editor-bar input::placeholder {
+    color: #52525b;
+}
+
+.wstyle-tag-section {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.wstyle-tag-cat-title {
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wstyle-tag-cat-title::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: linear-gradient(to bottom, #a855f7, #6366f1);
+}
+
+.wstyle-tag-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.wstyle-tag {
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.wstyle-tag:hover {
+    border-color: #52525b;
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.wstyle-tag.selected {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.4);
+    color: #c084fc;
+    font-weight: 600;
+}
+
+.wstyle-insights-panel {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.wstyle-rule-panel {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 20px;
+}
+
+.wstyle-rule-panel textarea {
+    width: 100%;
+    min-height: 100px;
+    resize: vertical;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px;
+    color: var(--text-main);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.wstyle-rule-panel textarea:focus {
+    border-color: #a855f7;
+}
+
+.wstyle-info-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: rgba(99, 102, 241, 0.06);
+    border-left: 3px solid #6366f1;
+}
+
+.wstyle-info-callout i {
+    color: #6366f1;
+    font-size: 0.85rem;
+    margin-top: 2px;
+}
+
+.wstyle-info-callout span {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.mtab-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mtab-header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.mtab-header-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.mtab-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-main);
+    letter-spacing: -0.02em;
+}
+
+.mtab-header p {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.mtab-header-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mtab-eng-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0;
+}
+
+.mtab-eng-card:hover {
+    border-color: #52525b;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+}
+
+.mtab-eng-card .ecard-accent {
+    height: 3px;
+    width: 100%;
+    background: linear-gradient(90deg, var(--border-color), transparent);
+    transition: background 0.3s ease;
+}
+
+.mtab-eng-card:hover .ecard-accent {
+    background: linear-gradient(90deg, var(--gold), #d97706, transparent);
+}
+
+.mtab-eng-card.active .ecard-accent {
+    background: linear-gradient(90deg, #10b981, #059669) !important;
+}
+
+.mtab-eng-card .ecard-body {
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mtab-eng-card .ecard-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.mtab-eng-card .ecard-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.mtab-eng-card .ecard-badge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.mtab-eng-card .ecard-badge.rec {
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--gold);
+}
+
+.mtab-eng-card .ecard-badge.new {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.mtab-eng-card .ecard-badge.locked {
+    background: rgba(82, 82, 91, 0.2);
+    color: #71717a;
+}
+
+.mtab-eng-card .ecard-badge.v6-active {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.mtab-eng-card .ecard-badge.override {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+}
+
+.mtab-eng-card.active {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.04);
+}
+
+.mtab-eng-card.active .ecard-title {
+    color: #10b981;
+}
+
+.mtab-eng-card.locked-card {
+    opacity: 0.5;
+    filter: grayscale(60%);
+    pointer-events: none;
+}
+
+.mtab-eng-card.locked-card:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.mtab-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 16px 20px;
+    gap: 16px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.mtab-toggle-row:hover {
+    border-color: #52525b;
+}
+
+.mtab-toggle-row.active {
+    border-color: var(--gold);
+    background: rgba(245, 158, 11, 0.03);
+}
+
+.mtab-toggle-row.active .ps-switch {
+    background: var(--gold); 
+}
+
+.mtab-toggle-row.active .ps-switch::after {
+    left: 22px;
+    background: #000;
+}
+
+.mtab-toggle-row .toggle-info {
+    flex: 1;
+}
+
+.mtab-toggle-row .toggle-label {
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mtab-toggle-row .toggle-desc {
+    font-size: 0.73rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    line-height: 1.4;
+}
+
+.mtab-panel {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.mtab-panel-title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mtab-panel-title i {
+    font-size: 0.85rem;
+}
+
+.mtab-panel-title.gold i {
+    color: var(--gold);
+}
+
+.mtab-panel-title.green i {
+    color: #10b981;
+}
+
+.mtab-panel-title.purple i {
+    color: #a855f7;
+}
+
+.mtab-panel-title.blue i {
+    color: #3b82f6;
+}
+
+.mtab-panel-title.red i {
+    color: #ef4444;
+}
+
+.mtab-setting-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.mtab-setting-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.mtab-setting-row:first-child {
+    padding-top: 0;
+}
+
+.mtab-setting-row .set-info {
+    flex: 1;
+}
+
+.mtab-setting-row .set-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.mtab-setting-row .set-desc {
+    font-size: 0.73rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.mtab-param-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+}
+
+.mtab-param-row .param-label {
+    min-width: 55px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mtab-param-row input[type="range"] {
+    flex: 1;
+    accent-color: var(--gold);
+    cursor: pointer;
+}
+
+.mtab-param-row input[type="number"] {
+    width: 55px;
+    padding: 5px 4px;
+    text-align: center;
+    font-size: 0.78rem;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-main);
+    outline: none;
+}
+
+.mtab-ban-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: all 0.2s;
+    word-break: break-word;
+}
+
+.mtab-ban-item:hover {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.mtab-ban-item i {
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.mtab-locked-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    background: var(--bg-main);
+    border: 1px dashed rgba(168, 85, 247, 0.3);
+    border-radius: 14px;
+    margin-bottom: 20px;
+}
+
+.mtab-locked-state i {
+    font-size: 2.5rem;
+    margin-bottom: 15px;
+}
+
+.mtab-locked-state h3 {
+    margin: 0 0 10px;
+    color: var(--text-main);
+    font-weight: 800;
+}
+
+.mtab-locked-state p {
+    color: var(--text-muted);
+    max-width: 500px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.mtab-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: rgba(99, 102, 241, 0.06);
+    border-left: 3px solid #6366f1;
+}
+
+.mtab-callout i {
+    color: #6366f1;
+    font-size: 0.85rem;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.mtab-callout span {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.mtab-callout.gold {
+    background: rgba(245, 158, 11, 0.06);
+    border-left-color: var(--gold);
+}
+
+.mtab-callout.gold i {
+    color: var(--gold);
+}
+
+.mtab-callout.green {
+    background: rgba(16, 185, 129, 0.06);
+    border-left-color: #10b981;
+}
+
+.mtab-callout.green i {
+    color: #10b981;
+}
+
+.mtab-callout.purple {
+    background: rgba(168, 85, 247, 0.06);
+    border-left-color: #a855f7;
+}
+
+.mtab-callout.purple i {
+    color: #a855f7;
+}
+
+.mtab-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.mtab-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mtab-btn-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.mtab-btn-row button {
+    font-size: 0.72rem;
+}
+
+.mobile-drawer-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 90;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.mobile-drawer-overlay.open {
+    opacity: 1;
+}
+
+.mobile-hamburger {
+    display: none; 
+}
+
+@media (max-width: 768px) {
+
+    
+    .ps-modern-modal.app-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        position: absolute !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        border-radius: 0 !important;
+        border: none !important;
+        padding-top: env(safe-area-inset-top, 0px) !important;
+    }
+
+    #prompt-slot-modal-overlay {
+        align-items: stretch !important;
+        padding: 0 !important;
+    }
+
+    
+    #prompt-slot-fixed-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+    }
+
+    
+    .dock {
+        position: absolute !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: auto !important;
+        width: 280px !important;
+        height: 100% !important;
+        padding: 20px 0 0 0 !important;
+        border-radius: 0 !important;
+        border: none !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+        flex-direction: column !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        gap: 0 !important;
+        z-index: 100 !important;
+        background: var(--bg-panel) !important;
+        backdrop-filter: blur(20px) !important;
+        box-shadow: 10px 0 40px rgba(0, 0, 0, 0.6) !important;
+
+        
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+
+    .dock.mobile-open {
+        transform: translateX(0) !important;
+    }
+
+    
+    .mobile-drawer-overlay.open {
+        display: block;
+        opacity: 1;
+    }
+
+    
+    .dock:hover {
+        width: 280px !important;
+        box-shadow: 10px 0 40px rgba(0, 0, 0, 0.6) !important;
+    }
+
+    
+    .mobile-drawer-header {
+        padding: 0 20px 16px 20px;
+        margin-bottom: 8px;
+        border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
+    }
+    .mobile-drawer-header h3 {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 0;
+    }
+
+    
+    .dock-icon {
+        flex-direction: row !important;
+        width: 100% !important;
+        height: 46px !important;
+        padding: 0 20px !important;
+        margin: 0 !important;
+        margin-bottom: 2px !important;
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+        gap: 0 !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+        flex-shrink: 0 !important;
+        border-radius: 0 !important;
+        color: var(--text-muted) !important;
+        transition: background 0.15s ease, color 0.15s ease !important;
+    }
+
+    .dock-icon i {
+        margin-right: 14px !important;
+        font-size: 1rem !important;
+        width: 20px !important;
+        text-align: center !important;
+    }
+
+    .dock-icon span {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        font-size: 0.85rem !important;
+        white-space: nowrap !important;
+    }
+
+    .dock:hover .dock-icon span {
+        transition-delay: 0s !important;
+    }
+
+    .dock-icon:hover,
+    .dock-icon:active {
+        margin-left: 0 !important;
+        width: 100% !important;
+        border-radius: 0 !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+        color: var(--text-main) !important;
+    }
+
+    .dock-icon.active {
+        margin-left: 0 !important;
+        width: 100% !important;
+        border-radius: 0 !important;
+        background: rgba(245, 158, 11, 0.1) !important;
+        color: var(--gold) !important;
+        border-left: 3px solid var(--gold) !important;
+    }
+
+    
+    .mobile-drawer-footer {
+        margin-top: auto;
+        padding: 12px 16px;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+    .mobile-drawer-footer-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: var(--bg-main);
+        border: 1px solid var(--border-color);
+        color: var(--text-muted);
+        font-family: 'Inter', sans-serif;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 0.15s;
+    }
+    .mobile-drawer-footer-btn:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+    .mobile-drawer-footer-btn.danger {
+        color: #ef4444;
+        border-color: rgba(239, 68, 68, 0.3);
+    }
+    .mobile-drawer-footer-btn.sync-global {
+        color: var(--gold);
+        border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    
+    .hero-banner {
+        height: auto !important;
+        min-height: 150px !important;
+    }
+
+    .hero-overlay {
+        background: linear-gradient(
+            to right,
+            rgba(0, 0, 0, 0.85) 0%,
+            rgba(24, 24, 27, 0.3) 60%,
+            rgba(24, 24, 27, 0.7) 100%
+        ) !important;
+    }
+
+    .hero-content {
+        padding: 0 16px 14px 16px !important;
+    }
+
+    .hero-content .name {
+        font-size: 1.4rem !important;
+        max-width: calc(100vw - 32px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .hero-content .status {
+        font-size: 0.6rem !important;
+    }
+
+    
+    .top-app-bar {
+        padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+        padding-bottom: 10px !important;
+        padding-left: calc(12px + env(safe-area-inset-left, 0px)) !important;
+        padding-right: calc(12px + env(safe-area-inset-right, 0px)) !important;
+        justify-content: space-between !important;
+    }
+
+    
+    .mobile-hamburger {
+        display: flex !important;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid var(--border-color);
+        backdrop-filter: blur(5px);
+        color: var(--text-main);
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: background 0.2s ease;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .mobile-hamburger:active {
+        background: rgba(255, 255, 255, 0.15);
+    }
+
+    .app-actions {
+        gap: 6px !important;
+        flex-wrap: nowrap !important;
+        justify-content: flex-end !important;
+    }
+
+    .app-actions .ps-modern-btn {
+        padding: 6px 10px !important;
+        font-size: 0 !important;  
+    }
+
+    .app-actions .ps-modern-btn i {
+        font-size: 0.85rem !important;
+    }
+
+    
+    #ps_btn_save_close {
+        font-size: 0.7rem !important;
+        padding: 8px 12px !important;
+    }
+
+    
+    #ps_live_token_count {
+        padding: 6px 10px !important;
+        font-size: 0.7rem !important;
+    }
+
+    
+    .main-content {
+        padding: 10px 14px 20px 14px !important;
+        margin-top: -30px !important; 
+    }
+
+    
+    .ps-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+
+    .ps-card {
+        padding: 14px !important;
+    }
+
+    .ps-card-title {
+        font-size: 0.95rem !important;
+    }
+
+    
+    .ps-toggle-card {
+        padding: 14px 16px !important;
+    }
+
+    
+    .ps-modern-input {
+        font-size: 0.85rem !important;
+    }
+
+    
+    .ps-modern-tag {
+        padding: 5px 10px !important;
+        font-size: 0.75rem !important;
+        margin: 2px !important;
+    }
+
+    
+    .ps-modern-btn {
+        padding: 10px 14px !important;
+        font-size: 0.8rem !important;
+        min-height: 40px;
+    }
+
+    
+    .main-content div[style*="display: flex"][style*="align-items: center"][style*="gap: 15px"] {
+        flex-wrap: wrap !important;
+    }
+
+    .main-content div[style*="display: flex"][style*="align-items: center"][style*="gap: 15px"] .ps-modern-input[style*="width: 200px"],
+    .main-content div[style*="display: flex"][style*="align-items: center"][style*="gap: 15px"] select[style*="width: 200px"] {
+        width: 100% !important;
+    }
+
+    
+    div[style*="display: grid"][style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    
+    div[style*="display: grid"][style*="grid-template-columns: 1fr 1fr"][style*="gap: 15px"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    
+    div[style*="display: flex"][style*="gap: 10px"] select[style*="flex: 2"],
+    div[style*="display: flex"][style*="gap: 10px"] select[style*="flex: 1"] {
+        min-width: 0 !important;
+    }
+
+    
+    div[style*="display: flex"][style*="gap: 10px"][style*="margin-bottom: 20px"] {
+        flex-wrap: wrap !important;
+    }
+
+    
+    div[style*="display: flex"][style*="gap: 15px"][style*="margin-bottom: 20px"][style*="align-items: center"] {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+
+    
+    .wf-textarea {
+        min-height: 300px !important;
+    }
+
+    div[style*="width: 250px"][style*="flex-shrink: 0"] {
+        display: none !important;
+    }
+
+    
+    div[style*="display: flex"][style*="gap: 8px"][style*="margin-bottom: 20px"] {
+        flex-wrap: wrap !important;
+    }
+
+    
+    #ps-global-tooltip {
+        max-width: 200px !important;
+        font-size: 0.78rem !important;
+    }
+
+    
+    #kazuma_progress_overlay {
+        left: 10px !important;
+        right: 10px !important;
+        width: auto !important;
+        bottom: 30px !important;
+    }
+}
+
+@media (max-width: 420px) {
+    .hero-banner {
+        height: 120px !important;
+    }
+
+    .hero-content .name {
+        font-size: 1.15rem !important;
+    }
+
+    .dock {
+        width: 260px !important;
+    }
+    .dock:hover {
+        width: 260px !important;
+    }
+
+    .dock-icon {
+        height: 42px !important;
+        padding: 0 16px !important;
+    }
+    .dock-icon span {
+        font-size: 0.8rem !important;
+    }
+
+    .app-actions .ps-modern-btn {
+        padding: 5px 8px !important;
+    }
+
+    #ps_btn_save_close {
+        font-size: 0.65rem !important;
+        padding: 6px 10px !important;
+    }
+
+    .main-content {
+        padding: 8px 10px 16px 10px !important;
+    }
+}
+
+.megumin_archived_text {
+    opacity: 0.5 !important;
+    font-style: italic !important;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.megumin_archived_text:hover {
+    opacity: 0.8 !important; 
+}
+
+.mem-progress-container {
+    width: 100%;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    margin-top: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.mem-prog-working { background: #10b981; transition: width 0.4s ease; }
+.mem-prog-short { background: #f59e0b; transition: width 0.4s ease; }
+.mem-prog-long { background: #3b82f6; transition: width 0.4s ease; }
+
+.mem-accordion {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.mem-accordion-header {
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.02);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.mem-accordion-header:hover { background: rgba(255, 255, 255, 0.05); }
+
+.mem-accordion-body {
+    padding: 16px;
+    display: none;
+    border-top: 1px solid var(--border-color);
+}
+
+.mem-accordion-body textarea {
+    width: 100%;
+    min-height: 100px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    padding: 10px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    resize: vertical;
+}
+
+.mem-spinner {
+    animation: spin 1s linear infinite;
+    color: var(--gold);
+}
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+.ps-prompt-editor {
+    margin-top: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.ps-prompt-editor-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    user-select: none;
+}
+
+.ps-prompt-editor-toggle:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.ps-prompt-editor-toggle .pe-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ps-prompt-editor-toggle .pe-title i {
+    font-size: 0.75rem;
+    color: #a855f7;
+}
+
+.ps-prompt-editor-toggle .pe-chevron {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    transition: transform 0.3s ease;
+}
+
+.ps-prompt-editor.open .pe-chevron {
+    transform: rotate(180deg);
+}
+
+.ps-prompt-editor-body {
+    display: none;
+    padding: 0 18px 18px;
+}
+
+.ps-prompt-editor.open .ps-prompt-editor-body {
+    display: block;
+}
+
+.ps-prompt-field {
+    margin-bottom: 16px;
+}
+
+.ps-prompt-field-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.ps-prompt-field-label .pf-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ps-prompt-field-label .pf-name i {
+    font-size: 0.65rem;
+    color: #a855f7;
+}
+
+.ps-prompt-field-label .pf-reset {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    background: transparent;
+}
+
+.ps-prompt-field-label .pf-reset:hover {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.ps-prompt-field textarea {
+    width: 100%;
+    min-height: 120px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    padding: 12px;
+    border-radius: 8px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.ps-prompt-field textarea:focus {
+    border-color: rgba(168, 85, 247, 0.5);
+}
+
+.ps-prompt-field .pf-hint {
+    margin-top: 5px;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.ps-prompt-field .pf-hint code {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.ps-prompt-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.ws-layout {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-top: 15px;
+}
+
+.ws-sidebar {
+    width: 260px; 
+    flex-shrink: 0;
+    background: transparent; 
+    border-right: 1px solid var(--border-color); 
+    padding: 0 15px 0 0;
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px; 
+}
+
+.ws-sidebar-title {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 800;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+    padding-left: 5px;
+}
+
+.ws-nav-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent; 
+    color: var(--text-muted);
+    text-align: left;
+    padding: 14px 16px; 
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.9rem; 
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+    margin-bottom: 2px;
+}
+
+.ws-nav-btn i {
+    width: 20px;
+    text-align: center;
+}
+
+.ws-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+
+.ws-nav-btn.active {
+    background: rgba(168, 85, 247, 0.08);
+    border-color: rgba(168, 85, 247, 0.3);
+    color: var(--purple);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+}
+
+.ws-nav-btn.active-green {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.ws-badge {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.65rem;
+}
+
+.ws-main {
+    flex: 1;
+    min-width: 0; 
+}
+
+.ws-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 15px;
+}
+
+.ws-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.ws-card:hover {
+    border-color: #52525b;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+.ws-card.active {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.ws-card-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-main);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+}
+
+.ws-card-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    flex: 1;
+}
+
+.ws-card-rule {
+    margin-top: 12px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: rgba(0,0,0,0.3);
+    padding: 8px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.ws-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.ws-btn-small {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 6px 0;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ws-btn-small:hover {
+    background: rgba(255,255,255,0.05);
+    color: #fff;
+}
+
+@media (max-width: 850px) {
+    .ws-layout {
+        flex-direction: column;
+    }
+    .ws-sidebar {
+        width: 100%;
+        position: relative;
+        padding: 10px;
+        box-sizing: border-box;
+    }
+    .ws-main {
+        width: 100%;
+    }
+}
+
+.sd-setting-group {
+    margin-bottom: 18px;
+    padding-left: 2px;
+}
+
+.sd-setting-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #e4e4e7;
+    margin-bottom: 10px;
+    display: block;
+}
+
+.sd-setting-label .sd-label-hint {
+    font-weight: 400;
+    color: #71717a;
+    font-size: 0.75rem;
+}
+
+.sd-rating-pills {
+    display: flex;
+    gap: 8px;
+}
+
+.sd-pill {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 8px 16px;
+    color: #a1a1aa;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sd-pill:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sd-pill.active {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+
+.sd-pacing-selector {
+    display: flex;
+    gap: 8px;
+}
+
+.sd-pacing-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 14px 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    color: #a1a1aa;
+}
+
+.sd-pacing-btn:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sd-pacing-btn.active {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+
+.sd-pacing-btn i {
+    font-size: 1.2rem;
+    margin-bottom: 6px;
+}
+
+.sd-pacing-btn .sd-pacing-name {
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+.sd-pacing-btn .sd-pacing-desc {
+    font-size: 0.68rem;
+    color: #71717a;
+    margin-top: 2px;
+}
+
+.sd-pacing-btn.active .sd-pacing-desc {
+    color: rgba(245, 158, 11, 0.7);
+}
+
+.sd-chip-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sd-chip {
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: inherit;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #a1a1aa;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sd-chip:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sd-chip.active {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #a78bfa;
+}
+
+.sd-genre-desc {
+    font-size: 0.73rem;
+    color: #71717a;
+    margin-top: 6px;
+    padding-left: 2px;
+    line-height: 1.4;
+}
+
+.sd-directors-note-hint {
+    background: rgba(245, 158, 11, 0.06);
+    border: 1px solid rgba(245, 158, 11, 0.15);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 0.78rem;
+    color: #b4935a;
+    line-height: 1.5;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.sd-directors-note-hint i {
+    color: #f59e0b;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.sd-directors-note-input {
+    width: 100%;
+    height: 80px;
+    resize: vertical;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    font-family: inherit;
+    background: #0e0e11;
+    border: 1px solid #27272a;
+    color: #f4f4f5;
+    padding: 12px 16px;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+.sd-directors-note-input:focus {
+    border-color: #52525b;
+    background: #18181b;
+}
+
+.sd-directive-output {
+    width: 100%;
+    height: 300px;
+    resize: vertical;
+    font-size: 0.83rem;
+    line-height: 1.6;
+    margin-bottom: 12px;
+    font-family: inherit;
+    background: #0e0e11;
+    border: 1px solid #27272a;
+    color: #f4f4f5;
+    padding: 12px 16px;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+.sd-directive-output:focus {
+    border-color: #52525b;
+    background: #18181b;
+}
+
+:root {
+  --c-brand:  #f59e0b;            
+  --c-select: #ffffff;            
+  --c-live:   #10b981;            
+  --c-danger: #ef4444;            
+  --c-info:   #3b82f6;            
+  --c-ai:     #a855f7;            
+
+  --glass:        rgba(24,24,27,.55);
+  --glass-lit:    rgba(40,40,46,.72);
+  --glass-line:   rgba(255,255,255,.10);
+  --glass-line-hi:rgba(255,255,255,.22);
+  --spec:         inset 0 1px 0 rgba(255,255,255,.08),
+                  inset 0 0 0 1px rgba(255,255,255,.02);
+  --spec-hi:      inset 0 1px 0 rgba(255,255,255,.16);
+  --ease-spring:  cubic-bezier(.34,1.56,.64,1);
+  --ease:         cubic-bezier(.22,.61,.36,1);
+}
+
+#prompt-slot-modal-overlay::before {
+  content: ""; position: fixed; inset: -20%; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(40vw 40vw at 22% 8%,  rgba(245,158,11,.16), transparent 60%),
+    radial-gradient(34vw 34vw at 86% 92%, rgba(99,102,241,.10), transparent 62%);
+  filter: blur(8px);
+  animation: coh-drift 30s var(--ease) infinite alternate;
+}
+@keyframes coh-drift {
+  from { transform: translate3d(0,0,0) scale(1); }
+  to   { transform: translate3d(3%,2%,0) scale(1.08); }
+}
+
+.ps-modern-modal.app-container,
+.dock,
+.ps-card, .mtab-eng-card, .ws-card, .wstyle-card,
+.mtab-panel, .mtab-toggle-row, .wstyle-dnr-panel, .wstyle-tag-section,
+.wstyle-insights-panel, .wstyle-rule-panel,
+#ps-global-tooltip {
+  box-shadow: var(--spec), 0 18px 40px -22px rgba(0,0,0,.8);
+}
+.ps-modern-modal.app-container { background: var(--glass); }
+.dock { background: rgba(18,18,20,.62); }
+
+.ps-card, .mtab-eng-card, .ws-card, .wstyle-card {
+  position: relative; overflow: hidden;
+  background: var(--glass);
+  border-color: var(--glass-line);
+  transition: transform .28s var(--ease), border-color .28s var(--ease),
+              background .28s var(--ease), box-shadow .28s var(--ease);
+}
+.ps-card::after, .mtab-eng-card::after, .ws-card::after, .wstyle-card::after {
+  content: ""; position: absolute; top: 0; left: -120%; width: 60%; height: 100%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,.10), transparent);
+  transform: skewX(-18deg); transition: left .6s var(--ease); pointer-events: none;
+}
+.ps-card:hover::after, .mtab-eng-card:hover::after,
+.ws-card:hover::after, .wstyle-card:hover::after { left: 130%; }
+.ps-card:hover, .mtab-eng-card:hover, .ws-card:hover, .wstyle-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--glass-line-hi);
+  background: var(--glass-lit);
+  box-shadow: var(--spec-hi), 0 22px 44px -20px rgba(0,0,0,.85);
+}
+
+.ps-card.selected,
+.mtab-eng-card.active,
+.ws-card.active,
+.wstyle-card.active {
+  background: var(--glass-lit) !important;
+  border-color: rgba(245,158,11,.55) !important;
+  color: var(--text-main) !important;
+  box-shadow: var(--spec-hi), inset 3px 0 0 var(--c-brand),
+              0 0 0 1px rgba(245,158,11,.18), 0 18px 40px -18px rgba(245,158,11,.25);
+}
+
+.ps-card.selected .ps-card-title,
+.ps-card.selected .ps-card-desc,
+.ps-card.selected div { color: inherit !important; }
+.mtab-eng-card.active .ecard-title,
+.ws-card.active .ws-card-title,
+.wstyle-card.active .card-title { color: var(--text-main) !important; }
+.mtab-eng-card.active .ecard-accent,
+.ws-card.active .card-accent,
+.wstyle-card.active .card-accent {
+  background: linear-gradient(90deg, var(--c-brand), transparent) !important;
+}
+
+.ws-nav-btn.active {
+  background: rgba(245,158,11,.12) !important;
+  border-color: rgba(245,158,11,.34) !important;
+  color: var(--c-brand) !important;
+  box-shadow: inset 3px 0 0 var(--c-brand), var(--spec);
+}
+.ws-nav-btn.active-green {
+  background: rgba(16,185,129,.12) !important;
+  border-color: rgba(16,185,129,.34) !important;
+  color: var(--c-live) !important;
+  box-shadow: inset 3px 0 0 var(--c-live), var(--spec);
+}
+
+.ps-switch { background: #3f3f46; transition: background .3s var(--ease-spring); }
+.ps-switch::after { transition: left .3s var(--ease-spring), background .3s var(--ease); }
+.ps-toggle-card.active .ps-switch,
+.mtab-toggle-row.active .ps-switch { background: var(--c-live) !important; }
+.ps-toggle-card.active .ps-switch::after,
+.mtab-toggle-row.active .ps-switch::after { left: 22px; background: #06281d; }
+
+.wstyle-header-icon, .mtab-header-icon {
+  background: var(--glass-lit) !important;
+  color: var(--c-brand) !important;
+  border: 1px solid var(--glass-line-hi);
+  box-shadow: var(--spec-hi), 0 0 18px -6px rgba(245,158,11,.5);
+}
+.wstyle-header h2, .mtab-header h2 {
+  font-size: 1.4rem; font-weight: 800; letter-spacing: -.03em;
+}
+.wstyle-header h2::before, .mtab-header h2::before {
+  content: ""; display: block; width: 26px; height: 2px; margin-bottom: 6px;
+  border-radius: 2px; background: linear-gradient(90deg, var(--c-brand), transparent);
+}
+
+.wstyle-section-head, .mtab-panel-title { color: var(--text-muted); }
+.wstyle-section-head i, .mtab-panel-title i { color: var(--c-brand); }
+.wstyle-section-head.green  i, .mtab-panel-title.green  i { color: var(--c-live); }
+.wstyle-section-head.purple i, .mtab-panel-title.purple i { color: var(--c-ai); }
+.wstyle-section-head.blue   i, .mtab-panel-title.blue   i { color: var(--c-info); }
+.wstyle-section-head.red    i, .mtab-panel-title.red    i { color: var(--c-danger); }
+.wstyle-section-head.gold   i, .mtab-panel-title.gold   i { color: var(--c-brand); }
+
+.ecard-badge.rec   { background: rgba(245,158,11,.14); color: var(--c-brand); }
+.ecard-badge.new   { background: rgba(59,130,246,.14); color: var(--c-info); }
+.ecard-badge.locked{ background: rgba(113,113,122,.18); color: #a1a1aa; }
+.ecard-badge.v6-active,
+.ecard-badge.override { background: rgba(16,185,129,.14); color: var(--c-live); }
+
+.wstyle-gen-btn,
+#ps_btn_get_authors_style:hover {
+  background: linear-gradient(135deg, rgba(168,85,247,.22), rgba(99,102,241,.16)) !important;
+  color: #d8b4fe !important;
+  border: 1px solid rgba(168,85,247,.45);
+  box-shadow: var(--spec), 0 8px 22px -10px rgba(168,85,247,.5);
+}
+.wstyle-tag.selected {
+  background: rgba(168,85,247,.16); border-color: rgba(168,85,247,.45); color: #d8b4fe;
+}
+.wstyle-rule-panel textarea:focus,
+.ps-prompt-field textarea:focus { border-color: rgba(168,85,247,.55); }
+
+.ps-modern-btn.primary {
+  background: linear-gradient(180deg, #ffffff, #e4e4e7);
+  color: #0a0a0a; box-shadow: var(--spec-hi), 0 10px 24px -12px rgba(255,255,255,.4);
+}
+.ps-modern-btn.secondary { box-shadow: var(--spec); }
+
+.wstyle-filter-pill.active {
+  background: var(--glass-lit); color: var(--text-main);
+  box-shadow: var(--spec-hi), inset 0 -2px 0 var(--c-brand);
+}
+.wstyle-filter-pill.active .pill-count { background: rgba(245,158,11,.22); color: var(--c-brand); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+.cfg-master {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 14px 16px; margin: 14px 0 12px;
+  border: 1px solid var(--border-color); border-radius: 12px;
+  background: rgba(0,0,0,.22);
+  transition: border-color .18s ease, background .18s ease;
+}
+.cfg-master.active { border-color: rgba(16,185,129,.45); background: rgba(16,185,129,.06); }
+.cfg-master-title { font-size: .85rem; font-weight: 700; color: var(--text-main); }
+.cfg-master-title i { color: var(--gold); margin-right: 6px; }
+.cfg-master-desc { font-size: .68rem; color: var(--text-muted); margin-top: 4px; line-height: 1.35; }
+
+.cfg-preset-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px 12px; margin-bottom: 16px;
+  border: 1px solid var(--border-color); border-radius: 10px;
+  background: rgba(0,0,0,.15);
+}
+
+.cfg-fields { display: flex; flex-direction: column; gap: 12px; }
+.cfg-fields.disabled { opacity: .45; pointer-events: none; filter: grayscale(.4); }
+
+.cfg-row {
+  border: 1px solid var(--border-color); border-left: 3px solid var(--border-color);
+  border-radius: 10px; background: rgba(0,0,0,.18);
+  transition: border-color .18s ease, background .18s ease;
+  overflow: hidden;
+}
+.cfg-row.on { border-left-color: #10b981; background: rgba(16,185,129,.05); }
+.cfg-row.open { background: rgba(255,255,255,.03); }
+.cfg-row.on.open { background: rgba(16,185,129,.07); }
+
+.cfg-row-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; cursor: pointer; user-select: none;
+}
+.cfg-row-head:hover { background: rgba(255,255,255,.03); }
+.cfg-row-label {
+  font-size: .8rem; font-weight: 700; color: var(--text-main);
+  display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+}
+.cfg-row-summary {
+  flex: 1 1 auto; min-width: 0; text-align: right;
+  font-size: .68rem; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cfg-row.on .cfg-row-summary { color: #10b981; }
+.cfg-row-chev {
+  flex: 0 0 auto; font-size: .65rem; color: var(--text-muted);
+  transition: transform .2s ease;
+}
+.cfg-row.open .cfg-row-chev { transform: rotate(180deg); }
+
+.cfg-row-body { display: none; padding: 0 14px 14px; }
+.cfg-row.open .cfg-row-body { display: block; }
+.cfg-row-hint { font-size: .66rem; color: var(--text-muted); margin: 0 0 10px; line-height: 1.45; }
+
+.cfg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cfg-chip { cursor: pointer; }
+
+.meg-blocks {
+  margin: 14px 0 4px;
+  border: 1px solid var(--border-color, rgba(255,255,255,.14));
+  border-radius: 12px;
+  background: rgba(0,0,0,.22);
+  overflow: hidden;
+}
+.meg-blocks.meg-blocks-empty { display: none; }
+
+.meg-blocks-tabs {
+  display: flex; align-items: stretch; gap: 0;
+  background: rgba(0,0,0,.28);
+  border-bottom: 1px solid var(--border-color, rgba(255,255,255,.12));
+  overflow-x: auto; scrollbar-width: thin;
+}
+.meg-blocks-tab {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 15px; cursor: pointer; white-space: nowrap;
+  background: transparent; border: 0;
+  border-right: 1px solid var(--border-color, rgba(255,255,255,.1));
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted, #9aa0a6);
+  font-size: .74rem; font-weight: 600; font-family: inherit;
+  transition: background .15s ease, color .15s ease;
+}
+.meg-blocks-tab:hover { background: rgba(255,255,255,.05); color: var(--text-main, #e8e8e8); }
+.meg-blocks-tab.active {
+  background: rgba(245,158,11,.1);
+  color: var(--text-main, #e8e8e8);
+  border-bottom-color: #f59e0b;
+}
+.meg-blocks-tab-emoji { font-size: .85rem; }
+.meg-blocks-tab-label { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+
+.meg-blocks-collapse {
+  margin-left: auto; padding: 9px 14px; cursor: pointer;
+  background: transparent; border: 0; border-left: 1px solid var(--border-color, rgba(255,255,255,.1));
+  color: var(--text-muted, #9aa0a6); font-size: .7rem;
+}
+.meg-blocks-collapse:hover { background: rgba(255,255,255,.05); color: var(--text-main, #e8e8e8); }
+.meg-blocks-collapse i { transition: transform .2s ease; display: inline-block; }
+.meg-blocks.meg-blocks-shut .meg-blocks-collapse i { transform: rotate(-90deg); }
+
+.meg-blocks.meg-blocks-shut .meg-blocks-panel { display: none; }
+.meg-blocks.meg-blocks-shut .meg-blocks-tabs { border-bottom: 0; }
+
+.meg-blocks-panel { padding: 12px 14px; }
+.meg-block-body.meg-block-truncated { opacity: .85; }
+
+.meg-block-flag {
+  font-size: .52rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+  padding: 1px 5px; border-radius: 999px;
+  background: rgba(239,68,68,.15); color: #ef4444; border: 1px solid rgba(239,68,68,.3);
+}
+
+.meg-block-body p { margin: 0 0 6px; font-size: .8rem; line-height: 1.5; }
+.meg-block-body p:last-child { margin-bottom: 0; }
+.meg-block-body ul { margin: 0 0 8px; padding-left: 20px; }
+.meg-block-body li { font-size: .8rem; line-height: 1.5; margin-bottom: 3px; }
+.meg-block-body hr {
+  border: 0; border-top: 1px solid var(--border-color, rgba(255,255,255,.12));
+  margin: 8px 0;
+}
+.meg-block-body code {
+  font-size: .75rem; padding: 1px 4px; border-radius: 4px;
+  background: rgba(255,255,255,.07);
+}
+
+.blk-layout { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.blk-col { flex: 1 1 320px; min-width: 300px; }
+
+.blk-stack { display: flex; flex-direction: column; gap: 8px; }
+.blk-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px;
+  background: rgba(0,0,0,.18);
+}
+.blk-row-off { opacity: .55; }
+.blk-row-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.blk-emoji { font-size: 1rem; }
+.blk-name { font-size: .8rem; font-weight: 700; color: var(--text-main); }
+.blk-tag {
+  font-size: .62rem; color: var(--text-muted); margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.blk-custom-flag {
+  font-size: .52rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+  padding: 1px 5px; border-radius: 999px; margin-left: 4px;
+  background: rgba(56,189,248,.15); color: #38bdf8; border: 1px solid rgba(56,189,248,.3);
+}
+.blk-row-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.blk-row-actions .ws-btn-small { padding: 4px 7px; }
+.blk-row-actions .ws-btn-small[disabled] { opacity: .3; cursor: not-allowed; }
+.blk-vis { padding: 4px 6px; font-size: .68rem; width: 92px; cursor: pointer; }
+
+.blk-pool { display: flex; flex-wrap: wrap; gap: 8px; }
+.blk-add {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px; border-radius: 999px; cursor: pointer;
+  font-size: .72rem; font-weight: 600; color: var(--text-main);
+  background: rgba(255,255,255,.04); border: 1px dashed var(--border-color);
+}
+.blk-add:hover { background: rgba(255,255,255,.08); border-color: var(--gold); }
+.blk-add-new { color: #10b981; border-color: rgba(16,185,129,.45); }
+
+.blk-empty {
+  padding: 14px; border: 1px dashed var(--border-color); border-radius: 10px;
+  font-size: .72rem; color: var(--text-muted); text-align: center;
+}
+.blk-preview-note { font-size: .66rem; color: var(--text-muted); margin-bottom: 10px; }
+.blk-preview .meg-blocks { margin-top: 0; }
+.blk-preview-source {
+  margin-top: 8px; font-size: .62rem; color: var(--text-muted); font-style: italic;
+}
+
+.blk-sub {
+  margin: -4px 0 2px 0; padding: 10px 12px 10px 34px;
+  border: 1px solid var(--border-color); border-top: 0;
+  border-radius: 0 0 10px 10px;
+  background: rgba(0,0,0,.28);
+  display: flex; flex-direction: column; gap: 9px;
+}
+.blk-sub-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.blk-sub-label { font-size: .72rem; font-weight: 600; color: var(--text-main); }
+.blk-sub-desc { font-size: .62rem; color: var(--text-muted); margin-top: 2px; line-height: 1.35; }
+
+.blk-row-system { background: rgba(59,130,246,.05); border-style: dashed; }
+.blk-sys-flag {
+  font-size: .58rem; font-weight: 800; letter-spacing: .04em;
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(59,130,246,.14); color: #60a5fa; border: 1px solid rgba(59,130,246,.3);
+}
+
+.meg-stat-row { margin-bottom: 12px; }
+.meg-stat-row:last-child { margin-bottom: 0; }
+.meg-stat-subject {
+  font-size: .78rem; font-weight: 700; color: var(--text-main, #e8e8e8);
+  margin-bottom: 6px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color, rgba(255,255,255,.1));
+}
+.meg-stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 14px;
+}
+.meg-stat-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.meg-stat-label {
+  font-size: .68rem; font-weight: 600; letter-spacing: .02em;
+  color: var(--text-muted, #9aa0a6);
+}
+.meg-stat-value { font-size: .78rem; font-weight: 700; color: var(--text-main, #e8e8e8); }
+.meg-stat-max { font-size: .62rem; font-weight: 500; color: var(--text-muted, #9aa0a6); }
+.meg-stat-bar {
+  height: 5px; margin-top: 4px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,.08);
+}
+.meg-stat-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #f43f5e, #fb7185);
+  transition: width .3s ease;
+}
+.meg-stat-note { font-size: .62rem; margin-top: 3px; color: var(--text-muted, #9aa0a6); line-height: 1.35; }
+.meg-stat-note.meg-stat-up { color: #10b981; }
+.meg-stat-note.meg-stat-down { color: #ef4444; }
+.meg-stat-plain .meg-stat-top { padding-bottom: 2px; }
+
+.blk-sub-fields { padding-left: 12px; }
+.stat-field-list { display: flex; flex-direction: column; gap: 6px; }
+.stat-field { display: flex; align-items: center; gap: 6px; }
+.stat-field .sf-label { flex: 1 1 auto; min-width: 90px; padding: 5px 8px; font-size: .72rem; }
+.stat-field .sf-type { width: 92px; padding: 5px; font-size: .68rem; cursor: pointer; }
+.stat-field .sf-max,
+.stat-field .sf-start { width: 62px; padding: 5px; font-size: .68rem; text-align: center; }
+.stat-field .ws-btn-small { padding: 4px 7px; }
+.stat-field .ws-btn-small[disabled] { opacity: .3; cursor: not-allowed; }
+`;
 
 const ST_PARITY_CSS = String.raw`.meg-overlay {
     --bg-main: #0e0e11;
@@ -4963,6 +8261,242 @@ const LUMIVERSE_COMPAT_CSS = String.raw`
 .dev-card-actions { display:flex; gap:8px; width:100%; }
 .dev-card-actions .ps-modern-btn { flex:1; padding:6px; font-size:.8rem; }
 .gold-fill { background:var(--gold) !important; color:#000 !important; border-color:var(--gold) !important; }
+/* Story Director console — copied from the SillyTavern build. */
+.sd-setting-group {
+    margin-bottom: 18px;
+    padding-left: 2px;
+}
+
+.sd-setting-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #e4e4e7;
+    margin-bottom: 10px;
+    display: block;
+}
+
+.sd-setting-label .sd-label-hint {
+    font-weight: 400;
+    color: #71717a;
+    font-size: 0.75rem;
+}
+
+.sd-rating-pills {
+    display: flex;
+    gap: 8px;
+}
+
+.sd-pill {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 8px 16px;
+    color: #a1a1aa;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sd-pill:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sd-pill.active {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+
+.sd-pacing-selector {
+    display: flex;
+    gap: 8px;
+}
+
+.sd-pacing-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 14px 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    color: #a1a1aa;
+}
+
+.sd-pacing-btn:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sd-pacing-btn.active {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+
+.sd-pacing-btn i {
+    font-size: 1.2rem;
+    margin-bottom: 6px;
+}
+
+.sd-pacing-btn .sd-pacing-name {
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+.sd-pacing-btn .sd-pacing-desc {
+    font-size: 0.68rem;
+    color: #71717a;
+    margin-top: 2px;
+}
+
+.sd-pacing-btn.active .sd-pacing-desc {
+    color: rgba(245, 158, 11, 0.7);
+}
+
+.sd-chip-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sd-chip {
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: inherit;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #a1a1aa;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sd-chip:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sd-chip.active {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #a78bfa;
+}
+
+.sd-genre-desc {
+    font-size: 0.73rem;
+    color: #71717a;
+    margin-top: 6px;
+    padding-left: 2px;
+    line-height: 1.4;
+}
+
+.sd-directors-note-hint {
+    background: rgba(245, 158, 11, 0.06);
+    border: 1px solid rgba(245, 158, 11, 0.15);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 0.78rem;
+    color: #b4935a;
+    line-height: 1.5;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.sd-directors-note-hint i {
+    color: #f59e0b;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.sd-directors-note-input {
+    width: 100%;
+    height: 80px;
+    resize: vertical;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    font-family: inherit;
+    background: #0e0e11;
+    border: 1px solid #27272a;
+    color: #f4f4f5;
+    padding: 12px 16px;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+.sd-directors-note-input:focus {
+    border-color: #52525b;
+    background: #18181b;
+}
+
+.sd-directive-output {
+    width: 100%;
+    height: 300px;
+    resize: vertical;
+    font-size: 0.83rem;
+    line-height: 1.6;
+    margin-bottom: 12px;
+    font-family: inherit;
+    background: #0e0e11;
+    border: 1px solid #27272a;
+    color: #f4f4f5;
+    padding: 12px 16px;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+.sd-directive-output:focus {
+    border-color: #52525b;
+    background: #18181b;
+}
+
+:root {
+  --c-brand:  #f59e0b;            
+  --c-select: #ffffff;            
+  --c-live:   #10b981;            
+  --c-danger: #ef4444;            
+  --c-info:   #3b82f6;            
+  --c-ai:     #a855f7;            
+
+  --glass:        rgba(24,24,27,.55);
+  --glass-lit:    rgba(40,40,46,.72);
+  --glass-line:   rgba(255,255,255,.10);
+  --glass-line-hi:rgba(255,255,255,.22);
+  --spec:         inset 0 1px 0 rgba(255,255,255,.08),
+                  inset 0 0 0 1px rgba(255,255,255,.02);
+  --spec-hi:      inset 0 1px 0 rgba(255,255,255,.16);
+  --ease-spring:  cubic-bezier(.34,1.56,.64,1);
+  --ease:         cubic-bezier(.22,.61,.36,1);
+}
+
+#prompt-slot-modal-overlay::before {
+  content: ""; position: fixed; inset: -20%; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(40vw 40vw at 22% 8%,  rgba(245,158,11,.16), transparent 60%),
+    radial-gradient(34vw 34vw at 86% 92%, rgba(99,102,241,.10), transparent 62%);
+  filter: blur(8px);
+  animation: coh-drift 30s var(--ease) infinite alternate;
+}
+#prompt-slot-modal-overlay > .app-container { position: relative; z-index: 1; }
+@keyframes coh-drift {
+  from { transform: translate3d(0,0,0) scale(1); }
+  to   { transform: translate3d(3%,2%,0) scale(1.08); }
+}
+
 .dev-empty { padding:20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-color); border-radius:12px; margin-bottom:30px; }
 
 /* Story Config */
@@ -5029,5 +8563,6 @@ const LUMIVERSE_COMPAT_CSS = String.raw`
 function styles(): string {
   return `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 ${ST_PARITY_CSS}
+${BETA_STYLE_CSS}
 ${LUMIVERSE_COMPAT_CSS}`;
 }

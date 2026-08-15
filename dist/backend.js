@@ -78,6 +78,7 @@ var DEFAULT_PROFILE = {
     triggerMode: "manual",
     autoFreq: 10,
     currentPlan: "",
+    contextLimit: 100,
     contentRating: "none",
     pacing: "natural",
     primaryGenre: "drama",

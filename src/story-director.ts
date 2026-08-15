@@ -37,8 +37,8 @@ export const SD_FLAVORS = [
   "War", "Isekai", "Harem", "Monster", "Mind Control", "Memory Loss", "Time Loop"
 ];
 
-export const SD_CONTENT_RATINGS = ["none", "sfw", "suggestive", "explicit", "unrestricted"];
-export const SD_PACING = ["natural", "slow", "fast", "escalating"];
+export const SD_CONTENT_RATINGS = ["none", "sfw", "nsfw"];
+export const SD_PACING = ["slowburn", "natural", "accelerate"];
 
 /** The user's overrides for this subsystem, or the shipped defaults. */
 function storyPrompts(plan: StoryPlanSettings) {

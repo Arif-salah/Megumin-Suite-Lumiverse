@@ -314,3 +314,52 @@ export function buildBlocksEnvelope(profile: MeguminProfile, dict: Record<string
 /** The compact World State body, used on the turns that do not get the full one. */
 export const COMPACT_WORLD_STATE =
   "Omit deep lore, unresolved threads, and off-screen tracking. Focus ONLY on immediate physical presence:\n<World_State>\n**Time & Loc:** [Time] at [Location]\n**PC:** [Brief visible clothing] | [Current posture/position]\n**NPCs Present:**\n* [Name]: [Brief visible clothing] | [Posture/position]\n</World_State>";
+
+/** Block visibility choices, copied from the SillyTavern build. */
+export const BLOCK_VISIBILITY_CHOICES = [
+  { v: "open", label: "Shown", hint: "Gets a tab in the chat card" },
+  { v: "hidden", label: "Hidden", hint: "No tab. Still sent, still read by the side panel." }
+];
+
+export const STAT_FIELD_PACKS: Record<string, Array<{ id: string; label: string; fields: StatField[] }>> = {
+    bonds: [
+        { id: "pack_romance", label: "Romance", fields: [
+            { id: "affection", label: "Affection", type: "meter", max: 100, start: 20 },
+            { id: "trust", label: "Trust", type: "meter", max: 100, start: 30 },
+            { id: "desire", label: "Desire", type: "meter", max: 100, start: 0 },
+            { id: "tension", label: "Tension", type: "meter", max: 100, start: 10 }
+        ] },
+        { id: "pack_rivalry", label: "Rivalry", fields: [
+            { id: "respect", label: "Respect", type: "meter", max: 100, start: 20 },
+            { id: "fear", label: "Fear", type: "meter", max: 100, start: 0 },
+            { id: "grudge", label: "Grudge", type: "meter", max: 100, start: 0 }
+        ] },
+        { id: "pack_social", label: "Social", fields: [
+            { id: "reputation", label: "Reputation", type: "meter", max: 100, start: 50 },
+            { id: "suspicion", label: "Suspicion", type: "meter", max: 100, start: 0 }
+        ] }
+    ],
+    sheet: [
+        { id: "pack_rpg", label: "RPG", fields: [
+            { id: "hp", label: "HP", type: "meter", max: 100, start: 100 },
+            { id: "stamina", label: "Stamina", type: "meter", max: 100, start: 100 },
+            { id: "mana", label: "Mana", type: "meter", max: 100, start: 100 },
+            { id: "gold", label: "Gold", type: "number", start: 0 },
+            { id: "skills", label: "Skills", type: "list", ownLine: true, hint: "Name rank, comma separated" },
+            { id: "inventory", label: "Inventory", type: "list", ownLine: true, hint: "items, or \"nothing\"" }
+        ] },
+        { id: "pack_survival", label: "Survival", fields: [
+            { id: "hunger", label: "Hunger", type: "meter", max: 100, start: 0 },
+            { id: "thirst", label: "Thirst", type: "meter", max: 100, start: 0 },
+            { id: "warmth", label: "Warmth", type: "meter", max: 100, start: 100 },
+            { id: "injuries", label: "Injuries", type: "text", ownLine: true, hint: "or \"none\"" }
+        ] }
+    ]
+};
+
+export const STAT_FIELD_TYPES: Array<{ v: StatField["type"]; label: string; hint: string }> = [
+    { v: "meter", label: "Meter", hint: "0–max, drawn as a bar" },
+    { v: "number", label: "Number", hint: "a plain count, no cap" },
+    { v: "text", label: "Text", hint: "a short line of prose" },
+    { v: "list", label: "List", hint: "comma separated items" }
+];

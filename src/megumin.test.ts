@@ -1020,3 +1020,31 @@ describe("Megumin subsystem prompts", () => {
     expect(v7[0].agenda).toBe("Survive.");
   });
 });
+
+describe("Megumin UI wiring", () => {
+  test("every data-action in the markup has a handler", () => {
+    // A tab rewritten without its handlers renders fine and does nothing when
+    // clicked, which is invisible until someone tries the button.
+    const declared = new Set([...frontendSource.matchAll(/data-action="([a-z0-9-]+)"/g)].map((m) => m[1]));
+    const handled = new Set([...frontendSource.matchAll(/action === "([a-z0-9-]+)"/g)].map((m) => m[1]));
+    // <select> actions are wired through their own change listener rather than the
+    // click dispatcher, so they are matched on the selector instead.
+    for (const match of frontendSource.matchAll(/select\[data-action=\\"([a-z0-9-]+)\\"\]/g)) handled.add(match[1]);
+    const unhandled = [...declared].filter((name) => !handled.has(name));
+    expect(unhandled).toEqual([]);
+  });
+
+  test("every icon the markup asks for resolves to a real glyph", () => {
+    // A missing icon silently falls back to a generic sparkle rather than erroring.
+    const used = new Set([...frontendSource.matchAll(/icon\("(fa-[a-z0-9-]+)"\)/g)].map((m) => m[1]));
+    const camel = (name: string) =>
+      "fa" + name.replace(/^fa-/, "").split("-").map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const missing = [...used].filter((name) => {
+      // Either imported into the FontAwesome library...
+      if (frontendSource.includes(`  ${camel(name)},`)) return false;
+      // ...or mapped through one of the alias tables to something that is.
+      return !frontendSource.includes(`"${name}":`);
+    });
+    expect(missing).toEqual([]);
+  });
+});

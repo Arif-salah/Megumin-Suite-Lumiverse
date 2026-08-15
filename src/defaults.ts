@@ -87,6 +87,7 @@ export const DEFAULT_PROFILE: MeguminProfile = {
     triggerMode: "manual",
     autoFreq: 10,
     currentPlan: "",
+    contextLimit: 100,
     contentRating: "none",
     pacing: "natural",
     primaryGenre: "drama",

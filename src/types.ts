@@ -167,9 +167,10 @@ export interface StoryPlanPrompts {
 export interface StoryPlanSettings {
   enabled: boolean;
   backend: UtilityBackend;
-  triggerMode: "manual" | "frequency";
+  triggerMode: "manual" | "auto" | "frequency";
   autoFreq: number;
   currentPlan: string;
+  contextLimit: number;
   /** Director settings — the standing brief the Story Maker writes against. */
   contentRating: string;
   pacing: string;
