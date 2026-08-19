@@ -1,21 +1,17 @@
 {
-  "name": "lumiverse-megumin-suite",
-  "version": "9.1.0",
+  "name": "megumin-spindle",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build src/backend.ts --outfile dist/backend.js --target bun && bun build src/frontend.ts --outfile dist/frontend.js --target browser",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit",
-    "check": "bun run typecheck && bun test && bun run build"
+    "prebuild": "node tools/embed-styles.mjs && node tools/embed-icons.mjs",
+    "build": "npm run prebuild && esbuild src/backend.js --bundle --format=esm --platform=neutral --outfile=dist/backend.js && esbuild src/frontend.js --bundle --format=esm --platform=browser --outfile=dist/frontend.js",
+    "check": "node tools/check-imports.mjs"
   },
   "devDependencies": {
-    "bun-types": "^1.3.10",
-    "typescript": "^5.8.3",
-    "lumiverse-spindle-types": "^0.5.13"
+    "esbuild": "^0.23.0"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-svg-core": "^7.2.0",
-    "@fortawesome/free-solid-svg-icons": "^7.2.0"
+    "jquery": "^3.7.1"
   }
 }
