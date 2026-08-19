@@ -1,8 +1,0 @@
-Font Awesome Free 6.5.2 — https://fontawesome.com
-  Icons (fa-solid-900.woff2): SIL OFL 1.1  — https://scripts.sil.org/OFL
-  CSS   (fa-all.css):         MIT License
-
-Bundled rather than linked because a published Spindle extension has no static
-asset host and the host page's CSP blocks external font origins. Only the solid
-face is shipped, and tools/embed-icons.mjs subsets the glyph rules to the icons
-this extension actually references.
