@@ -71,7 +71,17 @@ export async function loadSettings(userId) {
 export async function saveSettings(next, userId) {
     settingsCache = next || JSON.parse(JSON.stringify(EMPTY_SETTINGS));
     await spindle.storage.write(SETTINGS_FILE, JSON.stringify(settingsCache, null, 2));
-    return settingsCache;
+
+    // Which profile keys exist after the write. This is the line to read when
+    // the symptom is "my settings did not take": compare the key named here with
+    // the one the interceptor reports resolving, below in engine/context.js. A
+    // mismatch between them means the UI saved under one identity and the prompt
+    // builder looked up another.
+    spindle.log.info(
+        `[Megumin Suite] settings written; profiles: ${Object.keys(settingsCache.profiles || {}).join(", ") || "(none)"}`,
+    );
+
+    return { ok: true, profiles: Object.keys(settingsCache.profiles || {}) };
 }
 
 // -------------------------------------------------------------

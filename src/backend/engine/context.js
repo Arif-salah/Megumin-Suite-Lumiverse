@@ -55,6 +55,15 @@ export async function prepareEngineContext(chatId, userId) {
     const stored = (key && profiles[key]) || profiles.default || null;
     const profile = stored ? JSON.parse(JSON.stringify(stored)) : {};
 
+    // Say which identity actually supplied the profile. The frontend derives its
+    // save key from the active chat and the backend derives its lookup key from
+    // the generation context; if those two ever disagree the lookup silently
+    // falls through to `default`, and the symptom is a prompt built from
+    // whatever was configured first while every later edit appears to do
+    // nothing. That is invisible without this line.
+    const source = (key && profiles[key]) ? key : (profiles.default ? "default (no profile for this chat)" : "NONE");
+    spindle.log.info(`[Megumin Suite] profile resolved from: ${source}`);
+
     // Prompt blocks are stored as a diff against DEFAULT_PROMPTS. Without this
     // the engine would see only the keys the user edited and fall through to
     // `undefined` for the rest.

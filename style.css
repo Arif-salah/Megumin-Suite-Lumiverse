@@ -3568,13 +3568,29 @@
    layers its own sidebar and modals above this, so no z-index is set here. */
 .megumin-suite-app {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(3px);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    font-family: 'Inter', sans-serif;
+
+    /* The mount is a direct child of <body>, so nothing in the host's own
+       stacking context covers it. This is the value the SillyTavern overlay
+       used, and the window is modal — while it is open it should be on top. */
+    z-index: 10000;
+}
+
+/* Our own hide, because the rule above sets display: flex and would otherwise
+   beat a host rule that hides the mount by class. */
+.megumin-suite-app.megumin-hidden {
+    display: none !important;
 }
 
 .megumin-suite-app .ps-modern-modal {

@@ -6427,6 +6427,36 @@ function dispatchPush(payload) {
 
 // src/frontend/host.js
 var import_jquery = __toESM(require_jquery(), 1);
+
+// src/shared/engine/activeRequests.js
+var activeStoryPlanRequest = null;
+function setActiveStoryPlanRequest(v2) {
+  activeStoryPlanRequest = v2;
+}
+var activeBanListChat = null;
+var activeImageGenRequest = null;
+var activeNpcScanRequest = null;
+function setActiveNpcScanRequest(v2) {
+  activeNpcScanRequest = v2;
+}
+var activeNpcPfpRequest = null;
+function setActiveNpcPfpRequest(v2) {
+  activeNpcPfpRequest = v2;
+}
+var activeNpcUpdateRequest = null;
+function setActiveNpcUpdateRequest(v2) {
+  activeNpcUpdateRequest = v2;
+}
+var activeGenerationOrder = null;
+var activeNpcImages = [];
+function pushActiveNpcImage(img) {
+  activeNpcImages.push(img);
+}
+function clearActiveNpcImages() {
+  activeNpcImages = [];
+}
+
+// src/frontend/host.js
 var $2 = import_jquery.default;
 var ctx = null;
 function setHostContext(next) {
@@ -6451,12 +6481,17 @@ function saveSettingsDebounced() {
   clearTimeout(settingsFlushTimer);
   settingsFlushTimer = setTimeout(() => {
     const key = Object.keys(extension_settings)[0];
-    notify("settings:save", { settings: extension_settings[key] || {} });
+    call("settings:save", { settings: extension_settings[key] || {} }).catch((e2) => {
+      console.error("[Megumin Suite] Settings were NOT saved:", e2);
+      toastr.error("Settings could not be saved. See the browser console.", "Megumin Suite");
+    });
   }, 400);
 }
 function saveMetadata() {
-  notify("metadata:save", { metadata: chat_metadata });
-  return Promise.resolve();
+  return call("metadata:save", { metadata: chat_metadata }).catch((e2) => {
+    console.error("[Megumin Suite] Chat data was NOT saved:", e2);
+    toastr.error("Story plan / NPC data could not be saved. See the browser console.", "Megumin Suite");
+  });
 }
 var contextMirror = {
   chat: [],
@@ -6479,13 +6514,25 @@ async function refreshContext() {
   Object.assign(contextMirror, await call("context:load") || {});
   return contextMirror;
 }
+var MARKER_TASKS = {
+  ___PS_STORY_PLAN___: ["storyPlan", () => activeStoryPlanRequest],
+  ___PS_BANLIST___: ["banlist", () => activeBanListChat],
+  ___PS_IMAGE_GEN___: ["imagePrompt", () => activeImageGenRequest],
+  ___PS_NPC_SCAN___: ["npcScan", () => activeNpcScanRequest],
+  ___PS_NPC_PFP___: ["npcPortrait", () => activeNpcPfpRequest],
+  ___PS_NPC_UPDATE___: ["npcUpdate", () => activeNpcUpdateRequest],
+  ___PS_DUMMY___: ["order", () => activeGenerationOrder]
+};
 function generateQuietPrompt(options) {
   const prompt2 = typeof options === "string" ? options : options && options.prompt;
-  return call(
-    "generate:quiet",
-    { prompt: prompt2, options: typeof options === "object" ? options : {} },
-    { timeoutMs: 18e4 }
-  );
+  const entry = MARKER_TASKS[prompt2];
+  if (!entry) {
+    return Promise.reject(new Error(
+      `generateQuietPrompt was called with "${prompt2}", which is not a known Megumin marker. Add it to MARKER_TASKS in host.js and to MARKERS in backend/tasks.js.`
+    ));
+  }
+  const [task, readPayload] = entry;
+  return call("task:run", { task, payload: readPayload() }, { timeoutMs: 18e4 });
 }
 function isGenerating() {
   return contextMirror.isGenerating === true;
@@ -10169,13 +10216,29 @@ var MEGUMIN_STYLES = `@import url('https://fonts.googleapis.com/css2?family=Inte
    layers its own sidebar and modals above this, so no z-index is set here. */
 .megumin-suite-app {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(3px);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    font-family: 'Inter', sans-serif;
+
+    /* The mount is a direct child of <body>, so nothing in the host's own
+       stacking context covers it. This is the value the SillyTavern overlay
+       used, and the window is modal \u2014 while it is open it should be on top. */
+    z-index: 10000;
+}
+
+/* Our own hide, because the rule above sets display: flex and would otherwise
+   beat a host rule that hides the mount by class. */
+.megumin-suite-app.megumin-hidden {
+    display: none !important;
 }
 
 .megumin-suite-app .ps-modern-modal {
@@ -23520,22 +23583,29 @@ var WINDOW_HTML = `
 </div>
 `;
 var appMount = null;
+var windowOpen = false;
 function buildSettingsWindow(mount) {
   appMount = mount;
   mount.root.classList.add("megumin-suite-app");
   mount.root.innerHTML = WINDOW_HTML;
   hydrateIcons(mount.root);
-  mount.setVisible(false);
+  closeSettingsWindow();
   return mount.root;
 }
 function openSettingsWindow() {
-  appMount && appMount.setVisible(true);
+  if (!appMount) return;
+  windowOpen = true;
+  appMount.root.classList.remove("megumin-hidden");
+  appMount.setVisible(true);
 }
 function closeSettingsWindow() {
-  appMount && appMount.setVisible(false);
+  if (!appMount) return;
+  windowOpen = false;
+  appMount.root.classList.add("megumin-hidden");
+  appMount.setVisible(false);
 }
 function isSettingsWindowOpen() {
-  return !!(appMount && appMount.root && appMount.root.offsetParent !== null);
+  return windowOpen;
 }
 function buildLauncher(widget, onOpen) {
   widget.root.className = "meg-float";
@@ -31555,31 +31625,6 @@ Write a concise, well-structured writing style rule (100 words max) that the AI 
   });
 }
 
-// src/shared/engine/activeRequests.js
-var activeStoryPlanRequest = null;
-function setActiveStoryPlanRequest(v2) {
-  activeStoryPlanRequest = v2;
-}
-var activeNpcScanRequest = null;
-function setActiveNpcScanRequest(v2) {
-  activeNpcScanRequest = v2;
-}
-var activeNpcPfpRequest = null;
-function setActiveNpcPfpRequest(v2) {
-  activeNpcPfpRequest = v2;
-}
-var activeNpcUpdateRequest = null;
-function setActiveNpcUpdateRequest(v2) {
-  activeNpcUpdateRequest = v2;
-}
-var activeNpcImages = [];
-function pushActiveNpcImage(img) {
-  activeNpcImages.push(img);
-}
-function clearActiveNpcImages() {
-  activeNpcImages = [];
-}
-
 // src/frontend/ui/promptEditor.js
 function renderPromptEditor(config2) {
   const { id, title, defaultData, currentData, fields, onSave, onReset, enabled, onToggle } = config2;
@@ -36040,6 +36085,36 @@ function switchTab(index) {
   }
   updateLiveTokenCount();
 }
+function toggleTabGlobalSync() {
+  const title = (tabsUI[currentTab] || {}).title;
+  if (!title) return;
+  if (TABS_ALREADY_GLOBAL.includes(title)) {
+    toastr.info(`${title} is stored globally already \u2014 it is the same on every character.`, "Megumin Suite");
+    return;
+  }
+  if (!TAB_SYNC_KEYS[title]) {
+    toastr.info("This tab has nothing to sync.", "Megumin Suite");
+    return;
+  }
+  const map = meguminGlobalSyncMap();
+  const next = !map[title];
+  map[title] = next;
+  saveSettingsDebounced();
+  if (next) {
+    const ok = applyTabKeysToAllProfiles(title);
+    if (!ok) {
+      map[title] = false;
+      saveSettingsDebounced();
+      toastr.warning("The panel is still showing the previous chat's settings. Reopen it and try again.", "Megumin Suite");
+      updateGlobalSyncButton();
+      return;
+    }
+    toastr.success(`${title} now applies to every character. Changes here follow automatically.`, "Megumin Suite");
+  } else {
+    toastr.info(`${title} is back to per-character.`, "Megumin Suite");
+  }
+  updateGlobalSyncButton();
+}
 function meguminPropagateTabIfSynced() {
   if (!$2("#btn_apply_tab_all").length) return;
   const title = (tabsUI[currentTab] || {}).title;
@@ -36066,6 +36141,89 @@ function updateGlobalSyncButton() {
 registerRefreshHook(REFRESH.SWITCH_TAB, (index) => switchTab(typeof index === "number" ? index : currentTab));
 registerRefreshHook(REFRESH.TAB_PROPAGATE, () => meguminPropagateTabIfSynced());
 
+// src/frontend/ui/chrome.js
+var NS = ".meguminChrome";
+function bindWindowChrome() {
+  const body = $2(document);
+  body.off(NS);
+  body.on(`click${NS}`, ".sidebar-step", function() {
+    const index = parseInt(String($2(this).attr("id")).replace("dot_", ""), 10);
+    if (!Number.isNaN(index)) switchTab(index);
+  });
+  body.on(`click${NS}`, "#ps_btn_save_close", function() {
+    saveProfileToMemory();
+    closeSettingsWindow();
+    toastr.success("Workflow Configured & Applied Successfully!");
+  });
+  body.on(`click${NS}`, "#ps_btn_close", function() {
+    closeSettingsWindow();
+  });
+  body.on(`click${NS}`, "#ps_btn_reset", function() {
+    if (!confirm("Are you sure you want to completely reset this character's profile to the default template?")) return;
+    cancelDebounce(_saveProfileDebouncedInner);
+    const key = getCharacterKey() || "default";
+    delete extension_settings[extensionName].profiles[key];
+    saveSettingsDebounced();
+    initProfile();
+    switchTab(0);
+    toastr.info("Profile has been reset to defaults.");
+  });
+  body.on(`click${NS}`, "#btn_apply_tab_all", toggleTabGlobalSync);
+  body.on(`click${NS}`, "#ps_btn_dev_mode", function(e2) {
+    e2.preventDefault();
+    if ($2(this).text().includes("Exit Dev")) {
+      if (isDevEngineDirty && !confirm("You have unsaved changes in your custom engine. Are you sure you want to exit? Changes will be lost.")) {
+        return;
+      }
+      setDevEngineDirty(false);
+      switchTab(0);
+    } else {
+      renderDevMode("landing");
+    }
+  });
+  body.on(`input${NS}`, "#ps_main_current_rule", function() {
+    localProfile.aiRule = $2(this).val();
+    saveProfileDebounced();
+  });
+  bindTooltips(body);
+}
+function bindTooltips(body) {
+  if (!$2("#ps-global-tooltip").length) {
+    $2(document.body).append('<div id="ps-global-tooltip"></div>');
+  }
+  const tooltip = () => $2("#ps-global-tooltip");
+  body.on(`mouseenter${NS}`, ".ps-modern-tag", function() {
+    const hint = $2(this).attr("data-hint");
+    if (!hint) return;
+    const title = $2(this).text().trim();
+    tooltip().html(`<span class="ps-tooltip-title">${title}:</span> ${hint}`).addClass("visible");
+  });
+  body.on(`mousemove${NS}`, ".ps-modern-tag", function(e2) {
+    if (!$2(this).attr("data-hint")) return;
+    const t2 = tooltip();
+    let x2 = e2.clientX + 15;
+    let y2 = e2.clientY + 15;
+    if (x2 + t2.outerWidth() > window.innerWidth) x2 = e2.clientX - t2.outerWidth() - 15;
+    if (y2 + t2.outerHeight() > window.innerHeight) y2 = e2.clientY - t2.outerHeight() - 15;
+    t2.css({ left: `${x2}px`, top: `${y2}px` });
+  });
+  body.on(`mouseleave${NS}`, ".ps-modern-tag", () => tooltip().removeClass("visible"));
+  body.on(`mouseenter${NS}`, "#ps_live_token_count", function() {
+    const hint = $2(this).attr("data-breakdown");
+    if (!hint) return;
+    tooltip().html(hint).addClass("visible");
+  });
+  body.on(`mousemove${NS}`, "#ps_live_token_count", function(e2) {
+    const t2 = tooltip();
+    t2.css({ left: `${e2.clientX - t2.outerWidth() - 15}px`, top: `${e2.clientY + 15}px` });
+  });
+  body.on(`mouseleave${NS}`, "#ps_live_token_count", () => tooltip().removeClass("visible"));
+}
+function unbindWindowChrome() {
+  $2(document).off(NS);
+  $2("#ps-global-tooltip").remove();
+}
+
 // src/frontend.js
 function setup(ctx2) {
   setHostContext(ctx2);
@@ -36073,7 +36231,7 @@ function setup(ctx2) {
   const removeStyles = ctx2.dom.addStyle(MEGUMIN_STYLES);
   const appMount2 = ctx2.ui.mountApp({
     className: "megumin-suite-app",
-    position: "app-overlay"
+    position: "end"
   });
   buildSettingsWindow(appMount2);
   const launcher = ctx2.ui.createFloatWidget({
@@ -36120,15 +36278,10 @@ function setup(ctx2) {
     unsubBridge && unsubBridge();
     launcher.destroy();
     appMount2.destroy();
+    unbindWindowChrome();
     removeStyles();
     ctx2.dom.cleanup();
   };
-}
-function bindWindowChrome() {
-  $2(document).off("click.megumin-chrome").on("click.megumin-chrome", "#ps_btn_save_close", async () => {
-    await saveProfileToMemory();
-    closeSettingsWindow();
-  }).on("click.megumin-chrome", "#ps_btn_close", () => closeSettingsWindow());
 }
 export {
   setup

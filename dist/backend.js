@@ -55,7 +55,10 @@ async function loadSettings(userId) {
 async function saveSettings(next, userId) {
   settingsCache = next || JSON.parse(JSON.stringify(EMPTY_SETTINGS));
   await spindle.storage.write(SETTINGS_FILE, JSON.stringify(settingsCache, null, 2));
-  return settingsCache;
+  spindle.log.info(
+    `[Megumin Suite] settings written; profiles: ${Object.keys(settingsCache.profiles || {}).join(", ") || "(none)"}`
+  );
+  return { ok: true, profiles: Object.keys(settingsCache.profiles || {}) };
 }
 function metadataPath(chatId) {
   return `metadata/${String(chatId).replace(/[^A-Za-z0-9_-]/g, "_")}.json`;
@@ -333,6 +336,8 @@ async function prepareEngineContext(chatId, userId) {
   const key = chatId ? `chat::${chatId}` : null;
   const stored = key && profiles[key] || profiles.default || null;
   const profile = stored ? JSON.parse(JSON.stringify(stored)) : {};
+  const source = key && profiles[key] ? key : profiles.default ? "default (no profile for this chat)" : "NONE";
+  spindle.log.info(`[Megumin Suite] profile resolved from: ${source}`);
   meguminRehydrateProfilePrompts(profile);
   const metadata = await loadMetadata(chatId, userId);
   if (metadata.megumin_story_plan && profile.storyPlan) {

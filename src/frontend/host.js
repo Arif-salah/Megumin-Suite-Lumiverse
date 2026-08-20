@@ -37,6 +37,11 @@
 
 import jQuery from "jquery";
 import { call, notify } from "./bridge.js";
+import {
+    activeStoryPlanRequest, activeBanListChat, activeImageGenRequest,
+    activeNpcScanRequest, activeNpcPfpRequest, activeNpcUpdateRequest,
+    activeGenerationOrder,
+} from "../shared/engine/activeRequests.js";
 
 export const $ = jQuery;
 
@@ -87,19 +92,38 @@ export async function rehydrateMetadata() {
 
 let settingsFlushTimer = null;
 
+// Both writers below go out as REQUESTS, not notifications, and report what
+// comes back.
+//
+// They were notifications first, which cost a day: a notification has no reply,
+// so when the backend write threw, the error was logged on the server and
+// nowhere else. The window went on showing "Saved" after every edit, and the old
+// values came back on the next open — a settings screen that lies about having
+// saved, with the only evidence in a log nobody had reason to read.
+//
+// The round trip is not free, but it happens on a 400ms debounce after the user
+// stops typing, so nothing waits on it. Silence is the expensive option here.
+
 export function saveSettingsDebounced() {
     clearTimeout(settingsFlushTimer);
     settingsFlushTimer = setTimeout(() => {
         // The extension owns exactly one key in the settings object, so send that
         // rather than the whole thing — the backend writes it as one file.
         const key = Object.keys(extension_settings)[0];
-        notify("settings:save", { settings: extension_settings[key] || {} });
+        call("settings:save", { settings: extension_settings[key] || {} })
+            .catch((e) => {
+                console.error("[Megumin Suite] Settings were NOT saved:", e);
+                toastr.error("Settings could not be saved. See the browser console.", "Megumin Suite");
+            });
     }, 400);
 }
 
 export function saveMetadata() {
-    notify("metadata:save", { metadata: chat_metadata });
-    return Promise.resolve();
+    return call("metadata:save", { metadata: chat_metadata })
+        .catch((e) => {
+            console.error("[Megumin Suite] Chat data was NOT saved:", e);
+            toastr.error("Story plan / NPC data could not be saved. See the browser console.", "Megumin Suite");
+        });
 }
 
 // -------------------------------------------------------------
@@ -134,18 +158,46 @@ export async function refreshContext() {
 // Generation
 // -------------------------------------------------------------
 //
-// SillyTavern's generateQuietPrompt took a marker string and the interceptor
-// decided what the real prompt was, because both halves lived in the browser.
-// Here the engine lives in the backend, so the marker is forwarded and the
-// backend performs the same dispatch it always did.
+// The background features — story beats, the NPC scan, image prompts — all fire
+// the same way: park a payload in activeRequests, call generateQuietPrompt with
+// a MARKER string, and let the interceptor recognise the marker and swap in the
+// real prompt. Five call sites are written that way and they are unchanged.
+//
+// What changed underneath is that the two halves of that handshake no longer
+// share a module. activeRequests lives in shared/, so both bundles have a copy —
+// but they are separate copies in separate processes, and setting a marker in
+// the browser is invisible to the interceptor reading its own. Left alone, each
+// of those five features would have set a marker nothing ever read and asked for
+// a generation with a literal "___PS_NPC_SCAN___" as its prompt.
+//
+// So the marker is resolved HERE, on the side that actually set it: the map
+// below turns it back into the task name and the payload the frontend parked,
+// and both go to the backend together. backend/tasks.js sets its own marker
+// around building the prompt, which is where the interceptor can see it.
+
+const MARKER_TASKS = {
+    ___PS_STORY_PLAN___: ["storyPlan", () => activeStoryPlanRequest],
+    ___PS_BANLIST___: ["banlist", () => activeBanListChat],
+    ___PS_IMAGE_GEN___: ["imagePrompt", () => activeImageGenRequest],
+    ___PS_NPC_SCAN___: ["npcScan", () => activeNpcScanRequest],
+    ___PS_NPC_PFP___: ["npcPortrait", () => activeNpcPfpRequest],
+    ___PS_NPC_UPDATE___: ["npcUpdate", () => activeNpcUpdateRequest],
+    ___PS_DUMMY___: ["order", () => activeGenerationOrder],
+};
 
 export function generateQuietPrompt(options) {
     const prompt = typeof options === "string" ? options : (options && options.prompt);
-    return call(
-        "generate:quiet",
-        { prompt, options: typeof options === "object" ? options : {} },
-        { timeoutMs: 180000 },
-    );
+
+    const entry = MARKER_TASKS[prompt];
+    if (!entry) {
+        return Promise.reject(new Error(
+            `generateQuietPrompt was called with "${prompt}", which is not a known Megumin marker. `
+            + "Add it to MARKER_TASKS in host.js and to MARKERS in backend/tasks.js.",
+        ));
+    }
+
+    const [task, readPayload] = entry;
+    return call("task:run", { task, payload: readPayload() }, { timeoutMs: 180000 });
 }
 
 export function isGenerating() {

@@ -7,10 +7,16 @@
 //
 // Two things it does NOT reproduce, both deliberately:
 //
-//   The overlay. index.js wrapped the window in #prompt-slot-modal-overlay and
-//   faded it in and out itself. Here the window lives inside a Spindle app mount
-//   ("app-overlay" position), so the host handles layering it under the sidebar
-//   and modals. The mount is hidden and shown instead of the overlay.
+//   The overlay element. index.js wrapped the window in a
+//   #prompt-slot-modal-overlay div it appended itself and faded in and out. Here
+//   the app mount IS that element — the same rules are applied to it — so the
+//   window is one level shallower and is shown and hidden through the mount.
+//
+//   The mount goes at the end of <body>, not in the host's "app-overlay" layer.
+//   The overlay layer reads like the right home, but it sits inside the app
+//   shell, and the shell applies containment, which makes a position: fixed
+//   child anchor to the shell instead of the viewport — the window came out
+//   pushed down the page by the height of the chrome above it.
 //
 //   The drag logic. ui/launcher.js carried ~150 lines of pointer handling to
 //   make the button draggable and snap it to an edge, plus a localStorage entry
@@ -66,6 +72,14 @@ const WINDOW_HTML = `
 
 let appMount = null;
 
+// Whether the window is open, tracked rather than read back off the DOM.
+//
+// The obvious check — `root.offsetParent !== null` — is WRONG for this element
+// and silently so: offsetParent is null for any position: fixed element whether
+// it is visible or not, so it reported "closed" always, and the chat-switch
+// handler stopped redrawing the open window.
+let windowOpen = false;
+
 // Build the window once, into the app mount's root. switchTab() empties and
 // refills only #ps_stage_content after this, so the chrome, the dock and the
 // scroll container all persist across tab changes.
@@ -74,20 +88,30 @@ export function buildSettingsWindow(mount) {
     mount.root.classList.add("megumin-suite-app");
     mount.root.innerHTML = WINDOW_HTML;
     hydrateIcons(mount.root);
-    mount.setVisible(false);
+    closeSettingsWindow();
     return mount.root;
 }
 
 export function openSettingsWindow() {
-    appMount && appMount.setVisible(true);
+    if (!appMount) return;
+    windowOpen = true;
+    appMount.root.classList.remove("megumin-hidden");
+    appMount.setVisible(true);
 }
 
 export function closeSettingsWindow() {
-    appMount && appMount.setVisible(false);
+    if (!appMount) return;
+    windowOpen = false;
+    // Both, deliberately. setVisible() is the host's own switch and should be
+    // used; the class is ours, and it is what actually guarantees the window is
+    // hidden, because our stylesheet sets `display: flex` on this element and
+    // would win against a host rule that only sets `display: none` by class.
+    appMount.root.classList.add("megumin-hidden");
+    appMount.setVisible(false);
 }
 
 export function isSettingsWindowOpen() {
-    return !!(appMount && appMount.root && appMount.root.offsetParent !== null);
+    return windowOpen;
 }
 
 // -------------------------------------------------------------

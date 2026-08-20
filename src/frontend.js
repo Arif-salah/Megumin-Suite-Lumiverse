@@ -40,7 +40,8 @@ import {
     updateCharacterDisplay,
 } from "./frontend/ui/window.js";
 import { switchTab, currentTab } from "./frontend/ui/tabs.js";
-import { initProfile, saveProfileToMemory } from "./frontend/core/profile.js";
+import { bindWindowChrome, unbindWindowChrome } from "./frontend/ui/chrome.js";
+import { initProfile } from "./frontend/core/profile.js";
 import { attachBlockCards, scheduleBlockRefresh } from "./frontend/blocks/chat.js";
 
 export function setup(ctx) {
@@ -48,9 +49,18 @@ export function setup(ctx) {
     const unsubBridge = initBridge(ctx);
     const removeStyles = ctx.dom.addStyle(MEGUMIN_STYLES);
 
+    // "end" puts the mount at the end of document.body. "app-overlay" reads like
+    // the better fit — it is the host's own overlay layer — but it mounts INSIDE
+    // the app shell, and the shell applies containment, which makes a
+    // position: fixed child anchor to the shell rather than to the viewport. The
+    // window came out pushed down the page by the height of the chrome above it.
+    //
+    // A direct body child has no such ancestor, so the window covers the viewport
+    // the way it did in SillyTavern. The cost is that host chrome no longer paints
+    // over it, which is why the stylesheet gives it an explicit z-index.
     const appMount = ctx.ui.mountApp({
         className: "megumin-suite-app",
-        position: "app-overlay",
+        position: "end",
     });
     buildSettingsWindow(appMount);
 
@@ -120,20 +130,8 @@ export function setup(ctx) {
         unsubBridge && unsubBridge();
         launcher.destroy();
         appMount.destroy();
+        unbindWindowChrome();
         removeStyles();
         ctx.dom.cleanup();
     };
-}
-
-// The window's own buttons. Bound once, by delegation off the document, because
-// switchTab() replaces the stage's contents on every tab change and a handler
-// bound directly to a button inside it would not survive.
-function bindWindowChrome() {
-    $(document)
-        .off("click.megumin-chrome")
-        .on("click.megumin-chrome", "#ps_btn_save_close", async () => {
-            await saveProfileToMemory();
-            closeSettingsWindow();
-        })
-        .on("click.megumin-chrome", "#ps_btn_close", () => closeSettingsWindow());
 }
