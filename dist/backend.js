@@ -75,7 +75,16 @@ async function saveMetadata(chatId, metadata, userId) {
   if (!chatId) return;
   await spindle.storage.write(metadataPath(chatId), JSON.stringify(metadata || {}, null, 2));
 }
+var activeChatByUser = /* @__PURE__ */ new Map();
+var sawSwitchEvent = false;
+function trackActiveChat(userId, chatId) {
+  sawSwitchEvent = true;
+  activeChatByUser.set(userId || "__self__", chatId || null);
+}
 async function getActiveChatId(userId) {
+  const cacheKey = userId || "__self__";
+  if (activeChatByUser.has(cacheKey)) return activeChatByUser.get(cacheKey);
+  if (sawSwitchEvent && userId) return null;
   try {
     const chat = await spindle.chats.getActive(userId);
     return chat ? chat.id : null;
@@ -835,7 +844,17 @@ function toEngineMessages(messages) {
     extra: m.extra
   }));
 }
-async function prepareEngineContext(chatId, userId) {
+function resolveProfile(profiles, chatId, characterId) {
+  const candidates = [];
+  if (chatId) candidates.push(`chat::${chatId}`);
+  if (characterId) candidates.push(`char::${characterId}`);
+  candidates.push("default");
+  for (const key of candidates) {
+    if (profiles[key]) return { key, stored: profiles[key] };
+  }
+  return { key: null, stored: null };
+}
+async function enterEngine(chatId, messages, userId) {
   const settings = await loadSettings(userId);
   setGlobalSettings({
     configPresets: settings.configPresets || [],
@@ -843,12 +862,14 @@ async function prepareEngineContext(chatId, userId) {
     customModes: settings.customModes || [],
     globalSettings: settings.globalSettings || {}
   });
-  const profiles = settings.profiles || {};
-  const key = chatId ? `chat::${chatId}` : null;
-  const stored = key && profiles[key] || profiles.default || null;
+  const chat = chatId ? await spindle.chats.get(chatId, userId).catch(() => null) : null;
+  const characterId = chat && chat.character_id || null;
+  let character = null;
+  if (characterId) {
+    character = await spindle.characters.get(characterId, userId).catch(() => null);
+  }
+  const { key, stored } = resolveProfile(settings.profiles || {}, chatId, characterId);
   const profile = mergeProfile(stored);
-  const source = key && profiles[key] ? key : profiles.default ? "default (no profile for this chat)" : "NONE (nothing stored)";
-  spindle.log.info(`[Megumin Suite] profile from ${source}; engine=${profile.mode}`);
   meguminRehydrateProfilePrompts(profile);
   const metadata = await loadMetadata(chatId, userId);
   if (metadata.megumin_story_plan && profile.storyPlan) {
@@ -859,14 +880,9 @@ async function prepareEngineContext(chatId, userId) {
     profile.npcBank.npcs = metadata.megumin_npc_bank.npcs || [];
   }
   setLocalProfile(profile);
-  return profile;
-}
-async function buildEngineContext(chatId, messages, userId) {
-  const chat = await spindle.chats.get(chatId, userId).catch(() => null);
-  let character = null;
-  if (chat && chat.character_id) {
-    character = await spindle.characters.get(chat.character_id, userId).catch(() => null);
-  }
+  spindle.log.info(
+    `[Megumin Suite] profile from ${key || "NONE (nothing stored)"}; engine=${profile.mode}`
+  );
   return {
     chat: toEngineMessages(messages),
     chatId,
@@ -875,9 +891,9 @@ async function buildEngineContext(chatId, messages, userId) {
     userPersona: "",
     // {{char}} and {{user}} are the only macros the engine's own injected text
     // uses. Resolving them here rather than calling the host's macro engine
-    // keeps the interceptor free of an await it would otherwise pay on every
-    // placeholder — and the host has already expanded macros in the preset
-    // text by the time the interceptor sees it.
+    // keeps the interceptor free of an await on every placeholder — and the
+    // host has already expanded macros in the preset text by the time the
+    // interceptor sees it.
     substitute: (text) => {
       if (!text) return text;
       return String(text).replace(/\{\{char\}\}/gi, character && character.name || "the character").replace(/\{\{user\}\}/gi, "You");
@@ -6074,9 +6090,8 @@ async function runTask(taskName, payload, userId) {
   const setMarker = MARKERS[taskName];
   if (!setMarker) throw new Error(`Unknown Megumin task "${taskName}"`);
   const chatId = await getActiveChatId(userId);
-  await prepareEngineContext(chatId, userId);
   const messages = chatId ? await spindle.chat.getMessages(chatId).catch(() => []) : [];
-  const context = await (chatId ? buildEngineContext(chatId, messages, userId) : Promise.resolve({ chat: [], substitute: (t) => t }));
+  const context = await enterEngine(chatId, messages, userId);
   context.generationType = "quiet";
   let taskMessages;
   setMarker(payload);
@@ -6174,9 +6189,10 @@ handle("metadata:save", async ({ chatId, metadata }, userId) => {
   await saveMetadata(chatId || await getActiveChatId(userId), metadata, userId);
 });
 handle("context:load", async (_data, userId) => {
-  const chat = await spindle.chats.getActive(userId);
+  const chatId = await getActiveChatId(userId);
+  const chat = chatId ? await spindle.chats.get(chatId, userId).catch(() => null) : null;
   if (!chat) {
-    return { chat: [], chatId: null, characterId: null, characters: [], groupId: null };
+    return { chat: [], chatId: null, characterId: null, characters: [], groupId: null, userName: "You", isGenerating: false };
   }
   const [messages, character] = await Promise.all([
     spindle.chat.getMessages(chat.id).catch(() => []),
@@ -6247,9 +6263,8 @@ var TOKEN_EXCLUDED_KEYS = /* @__PURE__ */ new Set([
 ]);
 handle("tokens:estimate", async (_data, userId) => {
   const chatId = await getActiveChatId(userId);
-  await prepareEngineContext(chatId, userId);
   const messages = chatId ? await spindle.chat.getMessages(chatId).catch(() => []) : [];
-  const context = chatId ? await buildEngineContext(chatId, messages, userId) : { chat: [] };
+  const context = await enterEngine(chatId, messages, userId);
   const dict = buildBaseDict(context, true);
   const buckets = { engine: "", cot: "", style: "", addons: "" };
   for (const [key, value] of Object.entries(dict)) {
@@ -6291,8 +6306,7 @@ spindle.registerInterceptor(async (messages, generationContext) => {
     const userId = generationContext?.userId;
     const chatId = generationContext?.chatId || await getActiveChatId(userId);
     if (!chatId) return messages;
-    await prepareEngineContext(chatId, userId);
-    const context = await buildEngineContext(chatId, messages, userId);
+    const context = await enterEngine(chatId, messages, userId);
     context.generationType = generationContext?.generationType;
     context.onPreview = (promptString) => {
       push("prompt:preview", { prompt: promptString }, userId);
@@ -6303,5 +6317,8 @@ spindle.registerInterceptor(async (messages, generationContext) => {
     return messages;
   }
 }, 50);
+spindle.on("CHAT_SWITCHED", (payload, userId) => {
+  trackActiveChat(userId ?? payload?.userId, payload?.chatId ?? null);
+});
 installRouter();
 spindle.log.info("[Megumin Suite] backend ready");

@@ -154,6 +154,19 @@ export async function refreshContext() {
     return contextMirror;
 }
 
+// The user went back to the home screen. Clear the mirror rather than re-reading
+// it: the host's "active chat" setting still names the chat they just left, so
+// asking again returns the stale answer that made the lobby look like an open
+// chat — the settings window kept the character's portrait, and getCharacterKey()
+// kept answering char::<id> so edits saved into that character's profile.
+export function clearChatContext() {
+    contextMirror.chat = [];
+    contextMirror.chatId = null;
+    contextMirror.characterId = null;
+    contextMirror.characters = [];
+    contextMirror.chatName = null;
+}
+
 // -------------------------------------------------------------
 // Generation
 // -------------------------------------------------------------

@@ -34,7 +34,7 @@ import {
     setActiveNpcPfpRequest,
     setActiveGenerationOrder,
 } from "../shared/engine/activeRequests.js";
-import { prepareEngineContext, buildEngineContext } from "./engine/context.js";
+import { enterEngine } from "./engine/context.js";
 import { getActiveChatId } from "./store.js";
 
 // Which setter each task uses. Keyed by the name the frontend asks for.
@@ -53,12 +53,8 @@ export async function runTask(taskName, payload, userId) {
     if (!setMarker) throw new Error(`Unknown Megumin task "${taskName}"`);
 
     const chatId = await getActiveChatId(userId);
-    await prepareEngineContext(chatId, userId);
-
     const messages = chatId ? await spindle.chat.getMessages(chatId).catch(() => []) : [];
-    const context = await (chatId
-        ? buildEngineContext(chatId, messages, userId)
-        : Promise.resolve({ chat: [], substitute: (t) => t }));
+    const context = await enterEngine(chatId, messages, userId);
 
     // Tell injection.js this is a utility run, so it does not raise a preview.
     context.generationType = "quiet";

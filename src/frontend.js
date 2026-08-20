@@ -25,6 +25,7 @@ import {
     hydrate,
     refreshContext,
     rehydrateMetadata,
+    clearChatContext,
     fireAppReady,
     event_types,
     eventSource,
@@ -126,11 +127,21 @@ export function setup(ctx) {
         ctx.events.on(evt, () => scheduleBlockRefresh(120)));
 
     const unsubs = ["CHAT_SWITCHED", "CHAT_CHANGED"].map((evt) =>
-        ctx.events.on(evt, async () => {
+        ctx.events.on(evt, async (payload) => {
+            // CHAT_SWITCHED carries a null chatId when the user goes back to the
+            // home screen. That has to be handled as its own case: the host's
+            // active-chat lookup still names the chat they just left, so
+            // re-reading the context would restore it and the lobby would go on
+            // behaving as though that character were open.
+            const leftChat = evt === "CHAT_SWITCHED" && payload && !payload.chatId;
+
+            if (leftChat) clearChatContext();
+            else await refreshContext();
+
             await rehydrateMetadata();
-            await refreshContext();
             await initProfile();
             attachBlockCards();
+
             if (isSettingsWindowOpen()) {
                 updateCharacterDisplay();
                 switchTab(currentTab);

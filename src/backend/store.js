@@ -117,7 +117,39 @@ export async function saveMetadata(chatId, metadata, userId) {
 // Active chat
 // -------------------------------------------------------------
 
+// The chat the user is looking at, or null when they are in the lobby.
+//
+// spindle.chats.getActive() is documented as reading "the activeChatId setting
+// that the frontend persists whenever the user opens or closes a chat", and in
+// practice it keeps returning the last chat after the user goes back to the
+// home screen. That made the lobby behave as though the last character were
+// still open: the prompt engine resolved that character's profile, and the
+// settings window drew their portrait behind its header.
+//
+// CHAT_SWITCHED is the authoritative signal — it fires with chatId null on the
+// way to the home screen — so the event wins wherever we have heard one, and
+// getActive() is only the fallback for the window before the first event
+// arrives (an extension reload mid-session, say).
+//
+// Tracked per user because an operator-scoped install serves several, and one
+// user opening a chat must not move everyone else's.
+const activeChatByUser = new Map();
+let sawSwitchEvent = false;
+
+export function trackActiveChat(userId, chatId) {
+    sawSwitchEvent = true;
+    activeChatByUser.set(userId || "__self__", chatId || null);
+}
+
 export async function getActiveChatId(userId) {
+    const cacheKey = userId || "__self__";
+    if (activeChatByUser.has(cacheKey)) return activeChatByUser.get(cacheKey);
+
+    // A switch has been seen for somebody, but not this user. Trusting
+    // getActive() here is what would resurrect the lobby bug, so answer "no
+    // chat" rather than guess.
+    if (sawSwitchEvent && userId) return null;
+
     try {
         const chat = await spindle.chats.getActive(userId);
         return chat ? chat.id : null;

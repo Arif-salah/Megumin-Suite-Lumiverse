@@ -20,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { handle, push, installRouter } from "./backend/rpc.js";
-import { prepareEngineContext, buildEngineContext } from "./backend/engine/context.js";
+import { enterEngine } from "./backend/engine/context.js";
 import { runTask } from "./backend/tasks.js";
 import {
     comfyPing, comfyModels, comfySamplers, comfyLoras,
@@ -35,6 +35,7 @@ import {
     loadMetadata,
     saveMetadata,
     getActiveChatId,
+    trackActiveChat,
 } from "./backend/store.js";
 
 // -------------------------------------------------------------
@@ -62,9 +63,16 @@ handle("metadata:save", async ({ chatId, metadata }, userId) => {
 // through.
 
 handle("context:load", async (_data, userId) => {
-    const chat = await spindle.chats.getActive(userId);
+    // getActiveChatId(), not spindle.chats.getActive(). The host's own lookup
+    // still names the last chat after the user returns to the lobby, and this
+    // is what the settings window reads to draw its header — so calling it
+    // directly is what kept the character's portrait on screen in the lobby and
+    // kept edits saving into that character's profile.
+    const chatId = await getActiveChatId(userId);
+    const chat = chatId ? await spindle.chats.get(chatId, userId).catch(() => null) : null;
+
     if (!chat) {
-        return { chat: [], chatId: null, characterId: null, characters: [], groupId: null };
+        return { chat: [], chatId: null, characterId: null, characters: [], groupId: null, userName: "You", isGenerating: false };
     }
 
     const [messages, character] = await Promise.all([
@@ -171,12 +179,8 @@ const TOKEN_EXCLUDED_KEYS = new Set([
 
 handle("tokens:estimate", async (_data, userId) => {
     const chatId = await getActiveChatId(userId);
-    await prepareEngineContext(chatId, userId);
-
     const messages = chatId ? await spindle.chat.getMessages(chatId).catch(() => []) : [];
-    const context = chatId
-        ? await buildEngineContext(chatId, messages, userId)
-        : { chat: [] };
+    const context = await enterEngine(chatId, messages, userId);
 
     const dict = buildBaseDict(context, true);
 
@@ -250,9 +254,7 @@ spindle.registerInterceptor(async (messages, generationContext) => {
         const chatId = generationContext?.chatId || await getActiveChatId(userId);
         if (!chatId) return messages;
 
-        await prepareEngineContext(chatId, userId);
-
-        const context = await buildEngineContext(chatId, messages, userId);
+        const context = await enterEngine(chatId, messages, userId);
         context.generationType = generationContext?.generationType;
         context.onPreview = (promptString) => {
             push("prompt:preview", { prompt: promptString }, userId);
@@ -267,6 +269,17 @@ spindle.registerInterceptor(async (messages, generationContext) => {
         return messages;
     }
 }, 50);
+
+// -------------------------------------------------------------
+// Which chat is open
+// -------------------------------------------------------------
+//
+// Subscribed rather than polled because spindle.chats.getActive() does not go
+// back to null when the user returns to the home screen. See store.js.
+
+spindle.on("CHAT_SWITCHED", (payload, userId) => {
+    trackActiveChat(userId ?? payload?.userId, payload?.chatId ?? null);
+});
 
 // -------------------------------------------------------------
 // Boot

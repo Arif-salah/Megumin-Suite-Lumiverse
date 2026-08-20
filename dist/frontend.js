@@ -6514,6 +6514,13 @@ async function refreshContext() {
   Object.assign(contextMirror, await call("context:load") || {});
   return contextMirror;
 }
+function clearChatContext() {
+  contextMirror.chat = [];
+  contextMirror.chatId = null;
+  contextMirror.characterId = null;
+  contextMirror.characters = [];
+  contextMirror.chatName = null;
+}
 var MARKER_TASKS = {
   ___PS_STORY_PLAN___: ["storyPlan", () => activeStoryPlanRequest],
   ___PS_BANLIST___: ["banlist", () => activeBanListChat],
@@ -36270,9 +36277,11 @@ function setup(ctx2) {
   });
   const unsubsMessages = ["MESSAGE_EDITED", "MESSAGE_SWIPED", "GENERATION_ENDED"].map((evt) => ctx2.events.on(evt, () => scheduleBlockRefresh(120)));
   const unsubs = ["CHAT_SWITCHED", "CHAT_CHANGED"].map(
-    (evt) => ctx2.events.on(evt, async () => {
+    (evt) => ctx2.events.on(evt, async (payload) => {
+      const leftChat = evt === "CHAT_SWITCHED" && payload && !payload.chatId;
+      if (leftChat) clearChatContext();
+      else await refreshContext();
       await rehydrateMetadata();
-      await refreshContext();
       await initProfile();
       attachBlockCards();
       if (isSettingsWindowOpen()) {
