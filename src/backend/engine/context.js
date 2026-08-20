@@ -18,6 +18,7 @@ import { loadSettings, loadMetadata } from "../store.js";
 import { setLocalProfile } from "../../shared/state.js";
 import { setGlobalSettings } from "../../shared/globals.js";
 import { meguminRehydrateProfilePrompts } from "../../shared/prompts/storage.js";
+import { mergeProfile } from "../../shared/defaults.js";
 
 // Lumiverse message -> the shape the shared engine reads.
 export function toEngineMessages(messages) {
@@ -53,7 +54,14 @@ export async function prepareEngineContext(chatId, userId) {
 
     // Same fallback chain the browser walks: this chat, then the global default.
     const stored = (key && profiles[key]) || profiles.default || null;
-    const profile = stored ? JSON.parse(JSON.stringify(stored)) : {};
+
+    // Merged onto the full default shape, never used raw. A stored profile is
+    // always partial — the chat-scoped fields are stripped before writing, and
+    // anything added since it was last saved is absent — and the engine lookup
+    // treats a missing `mode` as the legacy V4 path rather than as an error. So
+    // a raw stored profile does not fail loudly, it generates with the wrong
+    // engine. See shared/defaults.js.
+    const profile = mergeProfile(stored);
 
     // Say which identity actually supplied the profile. The frontend derives its
     // save key from the active chat and the backend derives its lookup key from
@@ -61,8 +69,8 @@ export async function prepareEngineContext(chatId, userId) {
     // falls through to `default`, and the symptom is a prompt built from
     // whatever was configured first while every later edit appears to do
     // nothing. That is invisible without this line.
-    const source = (key && profiles[key]) ? key : (profiles.default ? "default (no profile for this chat)" : "NONE");
-    spindle.log.info(`[Megumin Suite] profile resolved from: ${source}`);
+    const source = (key && profiles[key]) ? key : (profiles.default ? "default (no profile for this chat)" : "NONE (nothing stored)");
+    spindle.log.info(`[Megumin Suite] profile from ${source}; engine=${profile.mode}`);
 
     // Prompt blocks are stored as a diff against DEFAULT_PROMPTS. Without this
     // the engine would see only the keys the user edited and fall through to

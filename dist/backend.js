@@ -313,120 +313,6 @@ function meguminRehydrateProfilePrompts(prof) {
   return prof;
 }
 
-// src/backend/engine/context.js
-function toEngineMessages(messages) {
-  return (messages || []).map((m) => ({
-    name: m.name || (m.is_user || m.role === "user" ? "You" : "Character"),
-    mes: typeof m.content === "string" ? m.content : m.mes || "",
-    is_user: m.role === "user" || m.is_user === true,
-    is_system: m.role === "system" || m.is_system === true,
-    swipe_id: m.swipe_id,
-    extra: m.extra
-  }));
-}
-async function prepareEngineContext(chatId, userId) {
-  const settings = await loadSettings(userId);
-  setGlobalSettings({
-    configPresets: settings.configPresets || [],
-    globalSyncMap: settings.globalSyncMap || {},
-    customModes: settings.customModes || [],
-    globalSettings: settings.globalSettings || {}
-  });
-  const profiles = settings.profiles || {};
-  const key = chatId ? `chat::${chatId}` : null;
-  const stored = key && profiles[key] || profiles.default || null;
-  const profile = stored ? JSON.parse(JSON.stringify(stored)) : {};
-  const source = key && profiles[key] ? key : profiles.default ? "default (no profile for this chat)" : "NONE";
-  spindle.log.info(`[Megumin Suite] profile resolved from: ${source}`);
-  meguminRehydrateProfilePrompts(profile);
-  const metadata = await loadMetadata(chatId, userId);
-  if (metadata.megumin_story_plan && profile.storyPlan) {
-    profile.storyPlan.currentPlan = metadata.megumin_story_plan.currentPlan || "";
-    profile.storyPlan.lastTrackerState = metadata.megumin_story_plan.lastTrackerState || "";
-  }
-  if (metadata.megumin_npc_bank && profile.npcBank) {
-    profile.npcBank.npcs = metadata.megumin_npc_bank.npcs || [];
-  }
-  setLocalProfile(profile);
-  return profile;
-}
-async function buildEngineContext(chatId, messages, userId) {
-  const chat = await spindle.chats.get(chatId, userId).catch(() => null);
-  let character = null;
-  if (chat && chat.character_id) {
-    character = await spindle.characters.get(chat.character_id, userId).catch(() => null);
-  }
-  return {
-    chat: toEngineMessages(messages),
-    chatId,
-    characterName: character && character.name || "the character",
-    characterDescription: character && (character.description || character.personality) || "",
-    userPersona: "",
-    // {{char}} and {{user}} are the only macros the engine's own injected text
-    // uses. Resolving them here rather than calling the host's macro engine
-    // keeps the interceptor free of an await it would otherwise pay on every
-    // placeholder — and the host has already expanded macros in the preset
-    // text by the time the interceptor sees it.
-    substitute: (text) => {
-      if (!text) return text;
-      return String(text).replace(/\{\{char\}\}/gi, character && character.name || "the character").replace(/\{\{user\}\}/gi, "You");
-    }
-  };
-}
-
-// src/shared/engine/activeRequests.js
-var activeStoryPlanRequest = null;
-function setActiveStoryPlanRequest(v) {
-  activeStoryPlanRequest = v;
-}
-var activeBanListChat = null;
-function setActiveBanListChat(v) {
-  activeBanListChat = v;
-}
-var activeImageGenRequest = null;
-function setActiveImageGenRequest(v) {
-  activeImageGenRequest = v;
-}
-var activeNpcScanRequest = null;
-function setActiveNpcScanRequest(v) {
-  activeNpcScanRequest = v;
-}
-var activeNpcPfpRequest = null;
-function setActiveNpcPfpRequest(v) {
-  activeNpcPfpRequest = v;
-}
-var activeNpcUpdateRequest = null;
-function setActiveNpcUpdateRequest(v) {
-  activeNpcUpdateRequest = v;
-}
-var activeGenerationOrder = null;
-function setActiveGenerationOrder(v) {
-  activeGenerationOrder = v;
-}
-var activeNpcImages = [];
-function pushActiveNpcImage(img) {
-  activeNpcImages.push(img);
-}
-function clearActiveNpcImages() {
-  activeNpcImages = [];
-}
-function isBackgroundGenerationActive() {
-  return !!(activeStoryPlanRequest || activeBanListChat || activeImageGenRequest || activeNpcPfpRequest || activeNpcUpdateRequest || activeGenerationOrder);
-}
-
-// src/shared/storyplan/genres.js
-var SD_GENRES = {
-  "slice-of-life": { label: "Slice of Life", desc: "Daily rhythms, small moments, character-driven warmth." },
-  "drama": { label: "Drama", desc: "Emotional conflict, relationship tension, high stakes feelings." },
-  "romance": { label: "Romance", desc: "Love as the central engine \u2014 pursuit, longing, devotion." },
-  "action": { label: "Action / Adventure", desc: "Physical danger, quests, combat, exploration." },
-  "mystery": { label: "Mystery / Thriller", desc: "Secrets, investigation, paranoia, carefully timed reveals." },
-  "fantasy": { label: "Fantasy / RPG", desc: "Magic systems, world-building, quests, power progression." },
-  "horror": { label: "Horror / Dark", desc: "Dread, survival, psychological terror, body horror." },
-  "scifi": { label: "Sci-Fi", desc: "Technology, space, dystopia, transhumanism." },
-  "comedy": { label: "Comedy", desc: "Humor-driven, absurdist, sitcom energy, comedic timing." }
-};
-
 // src/shared/utils/regex.js
 function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -771,6 +657,286 @@ function npcBuildUpdateRules() {
   }
   return lines.join("\n");
 }
+
+// src/shared/defaults.js
+var DEFAULT_PROFILE = {
+  mode: "balance",
+  personality: "engine",
+  v9Limits: { leanMin: 300, leanMax: 400, fullMin: 700, fullMax: 1200 },
+  toggles: { ooc: false, control: false },
+  aiTags: [],
+  aiGeneratedOptions: [],
+  aiRule: "",
+  customStyles: [],
+  activeStyleId: null,
+  storyConfig: {
+    enabled: false,
+    genre: "",
+    tone: "",
+    pov: "",
+    pace: "",
+    length: "",
+    difficulty: "",
+    friction: "",
+    npcDisposition: "",
+    explicitness: "",
+    narratorPresence: "",
+    focus: "",
+    culture: "",
+    era: "",
+    npcSpeechStyle: "",
+    notes: ""
+  },
+  dnRatio: {
+    enabled: false,
+    dialogue: 50
+  },
+  onomatopoeia: {
+    enabled: false,
+    useStyling: false
+  },
+  addons: [],
+  blocks: [],
+  // What sits inside the <Blocks> envelope, and in what order. `order` is
+  // membership as well as sequence: a block not listed is not emitted.
+  blockStack: {
+    order: [],
+    custom: [],
+    overrides: {}
+  },
+  // Fields for the stat blocks. Their templates are generated from these,
+  // so adding Jealousy or Mana is a setting, not a code change.
+  statBlocks: {
+    bonds: {
+      fields: [
+        { id: "mood", label: "Mood", type: "text", hint: "emotional surface" },
+        { id: "affection", label: "Affection", type: "meter", max: 100, start: 20 },
+        { id: "trust", label: "Trust", type: "meter", max: 100, start: 30 },
+        { id: "desire", label: "Desire", type: "meter", max: 100, start: 0 }
+      ]
+    },
+    sheet: {
+      fields: [
+        { id: "hp", label: "HP", type: "meter", max: 100, start: 100 },
+        { id: "stamina", label: "Stamina", type: "meter", max: 100, start: 100 },
+        { id: "gold", label: "Gold", type: "number", start: 0 },
+        { id: "status", label: "Status", type: "text", ownLine: true, hint: 'conditions, or "none"' },
+        { id: "skills", label: "Skills", type: "list", ownLine: true, hint: "Name rank, comma separated" },
+        { id: "inventory", label: "Inventory", type: "list", ownLine: true, hint: 'items, or "nothing"' }
+      ]
+    }
+  },
+  model: "cot-v1-english",
+  userNotes: "",
+  userLanguage: "",
+  userPronouns: "off",
+  devOverrides: {},
+  banList: [],
+  banListBackend: "direct",
+  banListCustomPrompts: null,
+  banListCustomPromptsEnabled: false,
+  customModes: [],
+  thinkEffort: "unspecified",
+  customThinkEffort: "100",
+  storyPlan: {
+    enabled: false,
+    backend: "direct",
+    triggerMode: "auto",
+    autoFreq: 10,
+    currentPlan: "",
+    customPrompts: null,
+    customPromptsEnabled: false,
+    contentRating: "none",
+    pacing: "natural",
+    primaryGenre: "drama",
+    flavorTags: [],
+    directorsNote: "",
+    unrestrictedContent: false,
+    lastTrackerState: "",
+    planMessageIndex: null
+  },
+  imageGen: {
+    enabled: false,
+    generatorBackend: "direct",
+    injectMode: "inline",
+    imageCount: 1,
+    comfyUrl: "http://127.0.0.1:8188",
+    currentWorkflowName: "",
+    selectedModel: "",
+    selectedLora: "",
+    selectedLora2: "",
+    selectedLora3: "",
+    selectedLora4: "",
+    selectedLoraWt: 1,
+    selectedLoraWt2: 1,
+    selectedLoraWt3: 1,
+    selectedLoraWt4: 1,
+    imgWidth: 1024,
+    imgHeight: 1024,
+    customNegative: "bad quality, blurry, worst quality, low quality",
+    customSeed: -1,
+    selectedSampler: "euler",
+    compressImages: true,
+    steps: 20,
+    cfg: 7,
+    denoise: 0.5,
+    clipSkip: 1,
+    promptTemplate: "illus_cinematic",
+    includeExamples: true,
+    directLanguage: false,
+    injectNpcTags: false,
+    promptExtra: "",
+    triggerMode: "always",
+    autoGenFreq: 1,
+    previewPrompt: false,
+    savedWorkflowStates: {},
+    customPrompts: null,
+    customPromptsEnabled: false
+  },
+  npcBank: {
+    enabled: false,
+    oocTrigger: false,
+    sendPortraitsToAi: false,
+    npcs: [],
+    // The dossier's shape. The prompt template, the parser, the card and
+    // the injected text are all generated from this, so adding a field
+    // is a setting the reader changes rather than a code change.
+    fields: JSON.parse(JSON.stringify(NPC_DEFAULT_FIELDS)),
+    customPrompts: null,
+    customPromptsEnabled: false,
+    scanDepth: 60,
+    ignoredNames: "",
+    injectionLimit: 3
+  }
+};
+function mergeProfile(raw) {
+  const base = JSON.parse(JSON.stringify(DEFAULT_PROFILE));
+  if (!raw || typeof raw !== "object") return base;
+  const merged = { ...base, ...raw };
+  for (const key of Object.keys(base)) {
+    const baseValue = base[key];
+    const rawValue = raw[key];
+    const isPlainObject = (v) => v && typeof v === "object" && !Array.isArray(v);
+    if (isPlainObject(baseValue) && isPlainObject(rawValue)) {
+      merged[key] = { ...baseValue, ...rawValue };
+    }
+  }
+  return merged;
+}
+
+// src/backend/engine/context.js
+function toEngineMessages(messages) {
+  return (messages || []).map((m) => ({
+    name: m.name || (m.is_user || m.role === "user" ? "You" : "Character"),
+    mes: typeof m.content === "string" ? m.content : m.mes || "",
+    is_user: m.role === "user" || m.is_user === true,
+    is_system: m.role === "system" || m.is_system === true,
+    swipe_id: m.swipe_id,
+    extra: m.extra
+  }));
+}
+async function prepareEngineContext(chatId, userId) {
+  const settings = await loadSettings(userId);
+  setGlobalSettings({
+    configPresets: settings.configPresets || [],
+    globalSyncMap: settings.globalSyncMap || {},
+    customModes: settings.customModes || [],
+    globalSettings: settings.globalSettings || {}
+  });
+  const profiles = settings.profiles || {};
+  const key = chatId ? `chat::${chatId}` : null;
+  const stored = key && profiles[key] || profiles.default || null;
+  const profile = mergeProfile(stored);
+  const source = key && profiles[key] ? key : profiles.default ? "default (no profile for this chat)" : "NONE (nothing stored)";
+  spindle.log.info(`[Megumin Suite] profile from ${source}; engine=${profile.mode}`);
+  meguminRehydrateProfilePrompts(profile);
+  const metadata = await loadMetadata(chatId, userId);
+  if (metadata.megumin_story_plan && profile.storyPlan) {
+    profile.storyPlan.currentPlan = metadata.megumin_story_plan.currentPlan || "";
+    profile.storyPlan.lastTrackerState = metadata.megumin_story_plan.lastTrackerState || "";
+  }
+  if (metadata.megumin_npc_bank && profile.npcBank) {
+    profile.npcBank.npcs = metadata.megumin_npc_bank.npcs || [];
+  }
+  setLocalProfile(profile);
+  return profile;
+}
+async function buildEngineContext(chatId, messages, userId) {
+  const chat = await spindle.chats.get(chatId, userId).catch(() => null);
+  let character = null;
+  if (chat && chat.character_id) {
+    character = await spindle.characters.get(chat.character_id, userId).catch(() => null);
+  }
+  return {
+    chat: toEngineMessages(messages),
+    chatId,
+    characterName: character && character.name || "the character",
+    characterDescription: character && (character.description || character.personality) || "",
+    userPersona: "",
+    // {{char}} and {{user}} are the only macros the engine's own injected text
+    // uses. Resolving them here rather than calling the host's macro engine
+    // keeps the interceptor free of an await it would otherwise pay on every
+    // placeholder — and the host has already expanded macros in the preset
+    // text by the time the interceptor sees it.
+    substitute: (text) => {
+      if (!text) return text;
+      return String(text).replace(/\{\{char\}\}/gi, character && character.name || "the character").replace(/\{\{user\}\}/gi, "You");
+    }
+  };
+}
+
+// src/shared/engine/activeRequests.js
+var activeStoryPlanRequest = null;
+function setActiveStoryPlanRequest(v) {
+  activeStoryPlanRequest = v;
+}
+var activeBanListChat = null;
+function setActiveBanListChat(v) {
+  activeBanListChat = v;
+}
+var activeImageGenRequest = null;
+function setActiveImageGenRequest(v) {
+  activeImageGenRequest = v;
+}
+var activeNpcScanRequest = null;
+function setActiveNpcScanRequest(v) {
+  activeNpcScanRequest = v;
+}
+var activeNpcPfpRequest = null;
+function setActiveNpcPfpRequest(v) {
+  activeNpcPfpRequest = v;
+}
+var activeNpcUpdateRequest = null;
+function setActiveNpcUpdateRequest(v) {
+  activeNpcUpdateRequest = v;
+}
+var activeGenerationOrder = null;
+function setActiveGenerationOrder(v) {
+  activeGenerationOrder = v;
+}
+var activeNpcImages = [];
+function pushActiveNpcImage(img) {
+  activeNpcImages.push(img);
+}
+function clearActiveNpcImages() {
+  activeNpcImages = [];
+}
+function isBackgroundGenerationActive() {
+  return !!(activeStoryPlanRequest || activeBanListChat || activeImageGenRequest || activeNpcPfpRequest || activeNpcUpdateRequest || activeGenerationOrder);
+}
+
+// src/shared/storyplan/genres.js
+var SD_GENRES = {
+  "slice-of-life": { label: "Slice of Life", desc: "Daily rhythms, small moments, character-driven warmth." },
+  "drama": { label: "Drama", desc: "Emotional conflict, relationship tension, high stakes feelings." },
+  "romance": { label: "Romance", desc: "Love as the central engine \u2014 pursuit, longing, devotion." },
+  "action": { label: "Action / Adventure", desc: "Physical danger, quests, combat, exploration." },
+  "mystery": { label: "Mystery / Thriller", desc: "Secrets, investigation, paranoia, carefully timed reveals." },
+  "fantasy": { label: "Fantasy / RPG", desc: "Magic systems, world-building, quests, power progression." },
+  "horror": { label: "Horror / Dark", desc: "Dread, survival, psychological terror, body horror." },
+  "scifi": { label: "Sci-Fi", desc: "Technology, space, dystopia, transhumanism." },
+  "comedy": { label: "Comedy", desc: "Humor-driven, absurdist, sitcom energy, comedic timing." }
+};
 
 // src/shared/data/modes/v9.js
 var modes_v9 = [

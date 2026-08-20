@@ -73,10 +73,23 @@ export function setup(ctx) {
         chromeless: true,
     });
 
+    // Reload the profile every time the window is opened, before anything is
+    // drawn. index.js did this and dropping it was the whole "my settings do
+    // nothing" bug: saveProfileToMemory() refuses to write when the profile in
+    // memory belongs to a different chat than the active one, so if the window
+    // was opened after a chat switch that this extension had not caught, every
+    // edit was declined and only a console.debug said so.
+    //
+    // Re-reading here makes the window's own open the synchronisation point, so
+    // it no longer depends on having seen the chat-switch event.
     buildLauncher(launcher, () => {
         openSettingsWindow();
-        updateCharacterDisplay();
-        switchTab(0);
+        (async () => {
+            await refreshContext();
+            await initProfile();
+            updateCharacterDisplay();
+            switchTab(0);
+        })().catch((err) => console.error("[Megumin Suite] could not open the settings window:", err));
     });
 
     bindWindowChrome();

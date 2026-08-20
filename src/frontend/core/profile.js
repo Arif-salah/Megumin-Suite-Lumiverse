@@ -15,6 +15,7 @@ import {
     debounce, humanizedDateTime, isGenerating,
 } from "../host.js";
 import { extensionName } from "./constants.js";
+import { DEFAULT_PROFILE } from "../../shared/defaults.js";
 import { localProfile, setLocalProfile, _loadedProfileKey, setLoadedProfileKey } from "./state.js";
 import { getCharacterKey, getRawAvatar, getAvatarKey, getParentChatKey, getProfileLevel } from "./keys.js";
 import { fireRefreshHook, REFRESH } from "./refreshHooks.js";
@@ -73,146 +74,7 @@ export function initProfile() {
         extension_settings[extensionName].configPresets = [];
     }
 
-    const defaults = {
-        mode: "balance",
-        personality: "engine",
-        v9Limits: { leanMin: 300, leanMax: 400, fullMin: 700, fullMax: 1200 },
-        toggles: { ooc: false, control: false },
-        aiTags: [],
-        aiGeneratedOptions: [],
-        aiRule: "",
-        customStyles: [],
-        activeStyleId: null,
-        storyConfig: {
-            enabled: false,
-            genre: "",
-            tone: "",
-            pov: "",
-            pace: "",
-            length: "",
-            difficulty: "",
-            friction: "",
-            npcDisposition: "",
-            explicitness: "",
-            narratorPresence: "",
-            focus: "",
-            culture: "",
-            era: "",
-            npcSpeechStyle: "",
-            notes: ""
-        },
-        dnRatio: {
-            enabled: false,
-            dialogue: 50
-        },
-        onomatopoeia: {
-            enabled: false,
-            useStyling: false
-        },
-        addons: [],
-        blocks: [],
-        // What sits inside the <Blocks> envelope, and in what order. `order` is
-        // membership as well as sequence: a block not listed is not emitted.
-        blockStack: {
-            order: [],
-            custom: [],
-            overrides: {}
-        },
-        // Fields for the stat blocks. Their templates are generated from these,
-        // so adding Jealousy or Mana is a setting, not a code change.
-        statBlocks: {
-            bonds: {
-                fields: [
-                    { id: "mood", label: "Mood", type: "text", hint: "emotional surface" },
-                    { id: "affection", label: "Affection", type: "meter", max: 100, start: 20 },
-                    { id: "trust", label: "Trust", type: "meter", max: 100, start: 30 },
-                    { id: "desire", label: "Desire", type: "meter", max: 100, start: 0 }
-                ]
-            },
-            sheet: {
-                fields: [
-                    { id: "hp", label: "HP", type: "meter", max: 100, start: 100 },
-                    { id: "stamina", label: "Stamina", type: "meter", max: 100, start: 100 },
-                    { id: "gold", label: "Gold", type: "number", start: 0 },
-                    { id: "status", label: "Status", type: "text", ownLine: true, hint: "conditions, or \"none\"" },
-                    { id: "skills", label: "Skills", type: "list", ownLine: true, hint: "Name rank, comma separated" },
-                    { id: "inventory", label: "Inventory", type: "list", ownLine: true, hint: "items, or \"nothing\"" }
-                ]
-            }
-        },
-        model: "cot-v1-english",
-        userNotes: "",
-        userLanguage: "",
-        userPronouns: "off",
-        devOverrides: {},
-        banList: [],
-        banListBackend: "direct",
-        banListCustomPrompts: null,
-        banListCustomPromptsEnabled: false,
-        customModes: [],
-        thinkEffort: "unspecified",
-        customThinkEffort: "100",
-        storyPlan: {
-            enabled: false,
-            backend: "direct",
-            triggerMode: "auto",
-            autoFreq: 10,
-            currentPlan: "",
-            customPrompts: null,
-            customPromptsEnabled: false,
-            contentRating: "none",
-            pacing: "natural",
-            primaryGenre: "drama",
-            flavorTags: [],
-            directorsNote: "",
-            unrestrictedContent: false,
-            lastTrackerState: "",
-            planMessageIndex: null
-        },
-        imageGen: {
-            enabled: false,
-            generatorBackend: "direct",
-            injectMode: "inline",
-            imageCount: 1,
-            comfyUrl: "http://127.0.0.1:8188",
-            currentWorkflowName: "",
-            selectedModel: "",
-            selectedLora: "", selectedLora2: "", selectedLora3: "", selectedLora4: "",
-            selectedLoraWt: 1.0, selectedLoraWt2: 1.0, selectedLoraWt3: 1.0, selectedLoraWt4: 1.0,
-            imgWidth: 1024, imgHeight: 1024,
-            customNegative: "bad quality, blurry, worst quality, low quality",
-            customSeed: -1,
-            selectedSampler: "euler",
-            compressImages: true,
-            steps: 20, cfg: 7.0, denoise: 0.5, clipSkip: 1,
-            promptTemplate: "illus_cinematic",
-            includeExamples: true,
-            directLanguage: false,
-            injectNpcTags: false,
-            promptExtra: "",
-            triggerMode: "always",
-            autoGenFreq: 1,
-            previewPrompt: false,
-            savedWorkflowStates: {},
-            customPrompts: null,
-            customPromptsEnabled: false
-        },
-        npcBank: {
-            enabled: false,
-            oocTrigger: false,
-            sendPortraitsToAi: false,
-            npcs: [],
-            // The dossier's shape. The prompt template, the parser, the card and
-            // the injected text are all generated from this, so adding a field
-            // is a setting the reader changes rather than a code change.
-            fields: JSON.parse(JSON.stringify(NPC_DEFAULT_FIELDS)),
-            customPrompts: null,
-            customPromptsEnabled: false,
-            scanDepth: 60,
-            ignoredNames: "",
-            injectionLimit: 3
-        }
-    };
+    const defaults = JSON.parse(JSON.stringify(DEFAULT_PROFILE));
 
 
     if (!extension_settings[extensionName].globalSettings) {
@@ -689,7 +551,13 @@ export function saveProfileToMemory() {
     // the data actually belongs to; initProfile clears the flag when the next profile
     // loads, so it cannot leak into an untouched chat.
     if (_loadedProfileKey && key !== _loadedProfileKey) {
-        console.debug(`[Megumin-Suite] saveProfileToMemory declined: the profile in memory belongs to "${_loadedProfileKey}" but the active chat is now "${key}". Skipping the chat_metadata blocks and the settings write so this chat's data is not saved into another chat.`);
+        // console.debug is the wrong level for this and it cost a day. A declined
+        // save looks identical to a successful one from the user's side — the
+        // window even shows "Saved" — so the only symptom is that settings
+        // silently stop taking effect. If this is refusing, the user needs to
+        // know now, not when they next read a log.
+        console.warn(`[Megumin Suite] Save DECLINED: the profile in memory belongs to "${_loadedProfileKey}" but the active chat is now "${key}". Nothing was written, so this chat's data is not saved into another chat.`);
+        toastr.warning("Settings were not saved — the open profile belongs to a different chat. Close and reopen the window.", "Megumin Suite");
         return;
     }
 

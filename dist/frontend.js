@@ -24094,6 +24094,512 @@ registerRefreshHook(REFRESH.TOKEN_COUNT, () => {
   void updateLiveTokenCount();
 });
 
+// src/shared/utils/regex.js
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// src/shared/npc/fields.js
+var NPC_FIELD_TYPES = [
+  { v: "text", label: "Text", hint: "a single line" },
+  { v: "longtext", label: "Paragraph", hint: "a few sentences of prose" },
+  { v: "list", label: "List", hint: "bulleted entries, one per line" }
+];
+var NPC_SYSTEM_ROLES = ["name", "vitals", "imageTags"];
+var NPC_DEFAULT_FIELDS = [
+  {
+    id: "name",
+    label: "Name",
+    type: "text",
+    system: "name",
+    icon: "fa-id-card",
+    color: "#e5e7eb",
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "Full name + nickname or alias",
+    hint: "The identity key. Dedupe, updates and the card header all use it."
+  },
+  {
+    id: "age",
+    label: "Age",
+    type: "text",
+    system: "vitals",
+    icon: "fa-cake-candles",
+    color: "#e5e7eb",
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "#"
+  },
+  {
+    id: "sex",
+    label: "Sex",
+    type: "text",
+    system: "vitals",
+    icon: "fa-venus-mars",
+    color: "#e5e7eb",
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "M/F/Other"
+  },
+  {
+    id: "orientation",
+    label: "Orientation",
+    type: "text",
+    system: "vitals",
+    icon: "fa-heart",
+    color: "#e5e7eb",
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "if relevant to plot"
+  },
+  {
+    id: "role",
+    label: "Role",
+    type: "text",
+    icon: "fa-briefcase",
+    color: "#60a5fa",
+    fixed: true,
+    persistent: true,
+    updatable: true,
+    placeholder: "Their actual occupation or place in the world, not just their immediate scene function",
+    hint: "What they do in the world. Updatable \u2014 people change jobs."
+  },
+  {
+    id: "whereToFind",
+    label: "Where to Find Them",
+    type: "text",
+    icon: "fa-map-location-dot",
+    color: "#34d399",
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    // Reworded away from the old "NEVER use temporary scene locations like
+    // the PC's bed" phrasing. Naming the failure made it available; asking
+    // for an ordinary future weekday makes the current scene structurally
+    // the wrong answer instead of a forbidden one.
+    placeholder: "A home district, a workplace, a regular haunt \u2014 somewhere they could still be found at 2pm on an ordinary Tuesday months from now",
+    hint: "Where they live and work, not where the current scene put them."
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    type: "longtext",
+    icon: "fa-eye",
+    color: "#a78bfa",
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "2\u20133 sentences a reader can picture: build, face, hair, distinguishing marks, how they carry themselves"
+  },
+  {
+    id: "imageTags",
+    label: "Image Tags",
+    type: "text",
+    system: "imageTags",
+    icon: "fa-tags",
+    color: "#f472b6",
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "Booru-style appearance tags \u2014 see image_tag_rule. Body and face only.",
+    hint: "Sent to ComfyUI, withheld from the model's text so it does not copy the tag syntax into prose."
+  },
+  {
+    id: "voice",
+    label: "Voice",
+    type: "text",
+    icon: "fa-comment-dots",
+    color: "#fbbf24",
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "How they speak \u2014 cadence, accent, verbal tics, topics they dodge"
+  },
+  {
+    id: "background",
+    label: "Background",
+    type: "longtext",
+    icon: "fa-book",
+    color: "#34d399",
+    ownLine: true,
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "3\u20135 sentences. Origin, how they got here, the event that shaped them. A life sketch, not a resume. Include facts the PC may never learn."
+  },
+  {
+    id: "innerCircle",
+    label: "Inner Circle",
+    type: "list",
+    icon: "fa-people-group",
+    color: "#fbbf24",
+    ownLine: true,
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    itemFormat: "[Name] \u2014 [Relationship] | [Age, status, current dynamic in one line]",
+    placeholder: "2\u20135 people. At least one must be off-screen and unknown to the story \u2014 a mother, an ex, a childhood friend, a rival. These are plot seeds, not flavour."
+  },
+  {
+    id: "personality",
+    label: "Personality",
+    type: "list",
+    icon: "fa-masks-theater",
+    color: "#f472b6",
+    ownLine: true,
+    fixed: true,
+    persistent: true,
+    updatable: false,
+    itemFormat: "Defining traits: [2\u20133 contradictions shown as behaviour, not labels]",
+    placeholder: "One line each for defining traits, core flaw (the thing that gets them in trouble), core fear (what they protect against), and tell (a physical or verbal sign when lying, nervous or attracted)."
+  },
+  {
+    id: "readOnPc",
+    label: "Read on the PC",
+    type: "text",
+    icon: "fa-magnifying-glass",
+    color: "#60a5fa",
+    persistent: false,
+    updatable: true,
+    placeholder: "What this NPC currently thinks of the PC, and how that could shift",
+    hint: "Current, not permanent. Expected to move as the story does."
+  },
+  {
+    id: "agenda",
+    label: "Agenda",
+    type: "text",
+    icon: "fa-bullseye",
+    color: "#fb923c",
+    persistent: false,
+    updatable: true,
+    placeholder: "What they are working toward right now",
+    hint: "Current, not permanent. Expected to move as the story does."
+  },
+  {
+    id: "secrets",
+    label: "Secrets",
+    type: "list",
+    icon: "fa-user-secret",
+    color: "#ef4444",
+    ownLine: true,
+    persistent: false,
+    updatable: true,
+    itemFormat: "Tier 1 (semi-public): [rumoured, or guessable with effort]",
+    placeholder: "One line per tier: Tier 2 (private) is known only to the inner circle, Tier 3 (buried) is the big one that drives unpredictable behaviour. Close with a Reveal hook: the pressure that could surface these.",
+    hint: "A list, so an update can add one secret or retire one without rewriting the rest."
+  },
+  {
+    id: "canonLock",
+    label: "Canon Lock",
+    type: "list",
+    icon: "fa-lock",
+    color: "#a855f7",
+    ownLine: true,
+    persistent: true,
+    updatable: false,
+    placeholder: "3\u20135 immutable facts that must never change across appearances \u2014 name, key relationships, defining marks, the buried secret",
+    hint: "Never updatable. A fact that can be revised is not a canon lock."
+  }
+];
+function npcFields() {
+  const nb = localProfile && localProfile.npcBank;
+  const list = nb && Array.isArray(nb.fields) && nb.fields.length ? nb.fields : NPC_DEFAULT_FIELDS;
+  return list.filter((f2) => f2 && f2.id && f2.label);
+}
+function npcFieldByRole(role) {
+  return npcFields().find((f2) => f2.system === role);
+}
+function npcBodyFields() {
+  return npcFields().filter((f2) => f2.system !== "name" && f2.system !== "vitals");
+}
+function npcVitalsFields() {
+  return npcFields().filter((f2) => f2.system === "vitals");
+}
+function npcUpdatableFields() {
+  return npcFields().filter((f2) => f2.updatable);
+}
+function npcFieldOps(f2) {
+  if (!f2 || !f2.updatable) return [];
+  return f2.type === "list" || f2.type === "longtext" ? ["+", "-", "~"] : ["~"];
+}
+function npcFieldAllowsOp(f2, op) {
+  return npcFieldOps(f2).includes(op);
+}
+function npcFieldSpec(f2) {
+  if (f2.type === "list") {
+    const lines = [`**${f2.label}:**`];
+    if (f2.placeholder) lines.push(`[${f2.placeholder}]`);
+    if (f2.itemFormat) {
+      lines.push(`* ${f2.itemFormat}`);
+      lines.push(`* [same format, one per line]`);
+    } else {
+      lines.push(`* [one per line]`);
+    }
+    return lines.join("\n");
+  }
+  return `**${f2.label}:** [${f2.placeholder || "value"}]`;
+}
+function npcPersistenceRule() {
+  const persistent = npcBodyFields().filter((f2) => f2.persistent && f2.system !== "imageTags");
+  if (!persistent.length) return "";
+  const names = persistent.map((f2) => f2.label).join(", ");
+  return [
+    `persistent_fields_rule: >`,
+    `  ${names} describe this person's ongoing life, not this scene.`,
+    `  Write each one as it would still be true at 2pm on an ordinary Tuesday,`,
+    `  months from now, with the current scene long over. A fact that only holds`,
+    `  inside this scene \u2014 where they are standing, what they are doing, who they`,
+    `  are with right now \u2014 belongs in none of them.`
+  ].join("\n");
+}
+function npcBuildDossierTemplate() {
+  const nameField = npcFieldByRole("name");
+  const vitals = npcVitalsFields();
+  const body = npcBodyFields();
+  const headerParts = [];
+  if (nameField) headerParts.push(`**${nameField.label}:** [${nameField.placeholder || "Full name"}]`);
+  vitals.forEach((f2) => headerParts.push(`**${f2.label}:** [${f2.placeholder || "value"}]`));
+  const header = headerParts.join(" | ");
+  const rows = body.map(npcFieldSpec).join("\n\n");
+  const nameAttr = nameField ? `[${nameField.placeholder || "Full Name"}]` : "[Full Name]";
+  return [
+    `<New_NPC name="${nameAttr}">`,
+    "",
+    header,
+    "",
+    rows,
+    "",
+    `</New_NPC>`
+  ].join("\n");
+}
+function replaceIndentedToken(text2, token, replacement) {
+  const re = new RegExp(`^([ \\t]*)${escapeRegex(token)}[ \\t]*$`, "m");
+  const m2 = text2.match(re);
+  if (!m2) return text2;
+  const pad = m2[1];
+  const body = String(replacement || "").split("\n").map((line) => line.trim() === "" ? "" : pad + line).join("\n");
+  return text2.replace(re, () => body);
+}
+function npcBuildDossierPrompt(rulesText) {
+  let out = String(rulesText || "");
+  out = replaceIndentedToken(out, "{{template}}", npcBuildDossierTemplate());
+  out = replaceIndentedToken(out, "{{persistenceRule}}", npcPersistenceRule());
+  return out;
+}
+function npcBuildUpdateTemplate() {
+  const updatable = npcUpdatableFields();
+  if (!updatable.length) return "";
+  const lines = [];
+  updatable.forEach((f2) => {
+    const ops = npcFieldOps(f2);
+    if (ops.includes("~")) lines.push(`~ ${f2.label}: [the replacement value for this whole field]`);
+    if (ops.includes("+")) lines.push(`+ ${f2.label}: [one new entry this scene established]`);
+    if (ops.includes("-")) lines.push(`- ${f2.label}: [enough of an existing entry's wording to identify which one]`);
+  });
+  return [
+    `<NPC_Update name="[Exact name as it appears in the NPC bank]">`,
+    ...lines,
+    `</NPC_Update>`
+  ].join("\n");
+}
+function npcBuildUpdatePrompt() {
+  const rules = npcBuildUpdateRules();
+  if (!rules) return "";
+  return `${rules}
+
+  template: |
+${npcBuildUpdateTemplate().split("\n").map((l2) => "    " + l2).join("\n")}
+`;
+}
+function npcBuildUpdateRules() {
+  const updatable = npcUpdatableFields();
+  if (!updatable.length) return "";
+  const single = updatable.filter((f2) => npcFieldOps(f2).length === 1);
+  const multi = updatable.filter((f2) => npcFieldOps(f2).length > 1);
+  const locked = npcBodyFields().filter((f2) => !f2.updatable && f2.system !== "imageTags");
+  const lines = [
+    "### NPC UPDATES:",
+    "  trigger: >",
+    "    Emit <NPC_Update> only when THIS scene changed something already on file",
+    "    for an NPC who already has a dossier. Omit the block entirely otherwise.",
+    "    Never restate information that did not change. One block per NPC.",
+    "",
+    `  updatable_fields: ${updatable.map((f2) => f2.label).join(", ")}`,
+    "",
+    "  operations:",
+    "    ~  replaces the field's whole contents.",
+    "    +  adds one new entry to a field that holds a list.",
+    "    -  removes one existing entry from a field that holds a list."
+  ];
+  const verb = (list) => list.length === 1 ? "holds" : "hold";
+  if (single.length) {
+    lines.push("", `    ${single.map((f2) => f2.label).join(", ")} ${verb(single)} a single value: use ~ only.`);
+  }
+  if (multi.length) {
+    lines.push(`    ${multi.map((f2) => f2.label).join(", ")} ${verb(multi)} a list: use +, - or ~.`);
+  }
+  if (locked.length) {
+    lines.push("", "  locked_fields: >", `    Never touch ${locked.map((f2) => f2.label).join(", ")}. Those are written once and fixed.`);
+  }
+  return lines.join("\n");
+}
+
+// src/shared/defaults.js
+var DEFAULT_PROFILE = {
+  mode: "balance",
+  personality: "engine",
+  v9Limits: { leanMin: 300, leanMax: 400, fullMin: 700, fullMax: 1200 },
+  toggles: { ooc: false, control: false },
+  aiTags: [],
+  aiGeneratedOptions: [],
+  aiRule: "",
+  customStyles: [],
+  activeStyleId: null,
+  storyConfig: {
+    enabled: false,
+    genre: "",
+    tone: "",
+    pov: "",
+    pace: "",
+    length: "",
+    difficulty: "",
+    friction: "",
+    npcDisposition: "",
+    explicitness: "",
+    narratorPresence: "",
+    focus: "",
+    culture: "",
+    era: "",
+    npcSpeechStyle: "",
+    notes: ""
+  },
+  dnRatio: {
+    enabled: false,
+    dialogue: 50
+  },
+  onomatopoeia: {
+    enabled: false,
+    useStyling: false
+  },
+  addons: [],
+  blocks: [],
+  // What sits inside the <Blocks> envelope, and in what order. `order` is
+  // membership as well as sequence: a block not listed is not emitted.
+  blockStack: {
+    order: [],
+    custom: [],
+    overrides: {}
+  },
+  // Fields for the stat blocks. Their templates are generated from these,
+  // so adding Jealousy or Mana is a setting, not a code change.
+  statBlocks: {
+    bonds: {
+      fields: [
+        { id: "mood", label: "Mood", type: "text", hint: "emotional surface" },
+        { id: "affection", label: "Affection", type: "meter", max: 100, start: 20 },
+        { id: "trust", label: "Trust", type: "meter", max: 100, start: 30 },
+        { id: "desire", label: "Desire", type: "meter", max: 100, start: 0 }
+      ]
+    },
+    sheet: {
+      fields: [
+        { id: "hp", label: "HP", type: "meter", max: 100, start: 100 },
+        { id: "stamina", label: "Stamina", type: "meter", max: 100, start: 100 },
+        { id: "gold", label: "Gold", type: "number", start: 0 },
+        { id: "status", label: "Status", type: "text", ownLine: true, hint: 'conditions, or "none"' },
+        { id: "skills", label: "Skills", type: "list", ownLine: true, hint: "Name rank, comma separated" },
+        { id: "inventory", label: "Inventory", type: "list", ownLine: true, hint: 'items, or "nothing"' }
+      ]
+    }
+  },
+  model: "cot-v1-english",
+  userNotes: "",
+  userLanguage: "",
+  userPronouns: "off",
+  devOverrides: {},
+  banList: [],
+  banListBackend: "direct",
+  banListCustomPrompts: null,
+  banListCustomPromptsEnabled: false,
+  customModes: [],
+  thinkEffort: "unspecified",
+  customThinkEffort: "100",
+  storyPlan: {
+    enabled: false,
+    backend: "direct",
+    triggerMode: "auto",
+    autoFreq: 10,
+    currentPlan: "",
+    customPrompts: null,
+    customPromptsEnabled: false,
+    contentRating: "none",
+    pacing: "natural",
+    primaryGenre: "drama",
+    flavorTags: [],
+    directorsNote: "",
+    unrestrictedContent: false,
+    lastTrackerState: "",
+    planMessageIndex: null
+  },
+  imageGen: {
+    enabled: false,
+    generatorBackend: "direct",
+    injectMode: "inline",
+    imageCount: 1,
+    comfyUrl: "http://127.0.0.1:8188",
+    currentWorkflowName: "",
+    selectedModel: "",
+    selectedLora: "",
+    selectedLora2: "",
+    selectedLora3: "",
+    selectedLora4: "",
+    selectedLoraWt: 1,
+    selectedLoraWt2: 1,
+    selectedLoraWt3: 1,
+    selectedLoraWt4: 1,
+    imgWidth: 1024,
+    imgHeight: 1024,
+    customNegative: "bad quality, blurry, worst quality, low quality",
+    customSeed: -1,
+    selectedSampler: "euler",
+    compressImages: true,
+    steps: 20,
+    cfg: 7,
+    denoise: 0.5,
+    clipSkip: 1,
+    promptTemplate: "illus_cinematic",
+    includeExamples: true,
+    directLanguage: false,
+    injectNpcTags: false,
+    promptExtra: "",
+    triggerMode: "always",
+    autoGenFreq: 1,
+    previewPrompt: false,
+    savedWorkflowStates: {},
+    customPrompts: null,
+    customPromptsEnabled: false
+  },
+  npcBank: {
+    enabled: false,
+    oocTrigger: false,
+    sendPortraitsToAi: false,
+    npcs: [],
+    // The dossier's shape. The prompt template, the parser, the card and
+    // the injected text are all generated from this, so adding a field
+    // is a setting the reader changes rather than a code change.
+    fields: JSON.parse(JSON.stringify(NPC_DEFAULT_FIELDS)),
+    customPrompts: null,
+    customPromptsEnabled: false,
+    scanDepth: 60,
+    ignoredNames: "",
+    injectionLimit: 3
+  }
+};
+
 // src/shared/data/modes/v9.js
 var modes_v9 = [
   {
@@ -28189,360 +28695,6 @@ function meguminSyncLegacyBlockIds() {
   localProfile.blocks = [...new Set(next)];
 }
 
-// src/shared/utils/regex.js
-function escapeRegex(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// src/shared/npc/fields.js
-var NPC_FIELD_TYPES = [
-  { v: "text", label: "Text", hint: "a single line" },
-  { v: "longtext", label: "Paragraph", hint: "a few sentences of prose" },
-  { v: "list", label: "List", hint: "bulleted entries, one per line" }
-];
-var NPC_SYSTEM_ROLES = ["name", "vitals", "imageTags"];
-var NPC_DEFAULT_FIELDS = [
-  {
-    id: "name",
-    label: "Name",
-    type: "text",
-    system: "name",
-    icon: "fa-id-card",
-    color: "#e5e7eb",
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "Full name + nickname or alias",
-    hint: "The identity key. Dedupe, updates and the card header all use it."
-  },
-  {
-    id: "age",
-    label: "Age",
-    type: "text",
-    system: "vitals",
-    icon: "fa-cake-candles",
-    color: "#e5e7eb",
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "#"
-  },
-  {
-    id: "sex",
-    label: "Sex",
-    type: "text",
-    system: "vitals",
-    icon: "fa-venus-mars",
-    color: "#e5e7eb",
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "M/F/Other"
-  },
-  {
-    id: "orientation",
-    label: "Orientation",
-    type: "text",
-    system: "vitals",
-    icon: "fa-heart",
-    color: "#e5e7eb",
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "if relevant to plot"
-  },
-  {
-    id: "role",
-    label: "Role",
-    type: "text",
-    icon: "fa-briefcase",
-    color: "#60a5fa",
-    fixed: true,
-    persistent: true,
-    updatable: true,
-    placeholder: "Their actual occupation or place in the world, not just their immediate scene function",
-    hint: "What they do in the world. Updatable \u2014 people change jobs."
-  },
-  {
-    id: "whereToFind",
-    label: "Where to Find Them",
-    type: "text",
-    icon: "fa-map-location-dot",
-    color: "#34d399",
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    // Reworded away from the old "NEVER use temporary scene locations like
-    // the PC's bed" phrasing. Naming the failure made it available; asking
-    // for an ordinary future weekday makes the current scene structurally
-    // the wrong answer instead of a forbidden one.
-    placeholder: "A home district, a workplace, a regular haunt \u2014 somewhere they could still be found at 2pm on an ordinary Tuesday months from now",
-    hint: "Where they live and work, not where the current scene put them."
-  },
-  {
-    id: "appearance",
-    label: "Appearance",
-    type: "longtext",
-    icon: "fa-eye",
-    color: "#a78bfa",
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "2\u20133 sentences a reader can picture: build, face, hair, distinguishing marks, how they carry themselves"
-  },
-  {
-    id: "imageTags",
-    label: "Image Tags",
-    type: "text",
-    system: "imageTags",
-    icon: "fa-tags",
-    color: "#f472b6",
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "Booru-style appearance tags \u2014 see image_tag_rule. Body and face only.",
-    hint: "Sent to ComfyUI, withheld from the model's text so it does not copy the tag syntax into prose."
-  },
-  {
-    id: "voice",
-    label: "Voice",
-    type: "text",
-    icon: "fa-comment-dots",
-    color: "#fbbf24",
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "How they speak \u2014 cadence, accent, verbal tics, topics they dodge"
-  },
-  {
-    id: "background",
-    label: "Background",
-    type: "longtext",
-    icon: "fa-book",
-    color: "#34d399",
-    ownLine: true,
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "3\u20135 sentences. Origin, how they got here, the event that shaped them. A life sketch, not a resume. Include facts the PC may never learn."
-  },
-  {
-    id: "innerCircle",
-    label: "Inner Circle",
-    type: "list",
-    icon: "fa-people-group",
-    color: "#fbbf24",
-    ownLine: true,
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    itemFormat: "[Name] \u2014 [Relationship] | [Age, status, current dynamic in one line]",
-    placeholder: "2\u20135 people. At least one must be off-screen and unknown to the story \u2014 a mother, an ex, a childhood friend, a rival. These are plot seeds, not flavour."
-  },
-  {
-    id: "personality",
-    label: "Personality",
-    type: "list",
-    icon: "fa-masks-theater",
-    color: "#f472b6",
-    ownLine: true,
-    fixed: true,
-    persistent: true,
-    updatable: false,
-    itemFormat: "Defining traits: [2\u20133 contradictions shown as behaviour, not labels]",
-    placeholder: "One line each for defining traits, core flaw (the thing that gets them in trouble), core fear (what they protect against), and tell (a physical or verbal sign when lying, nervous or attracted)."
-  },
-  {
-    id: "readOnPc",
-    label: "Read on the PC",
-    type: "text",
-    icon: "fa-magnifying-glass",
-    color: "#60a5fa",
-    persistent: false,
-    updatable: true,
-    placeholder: "What this NPC currently thinks of the PC, and how that could shift",
-    hint: "Current, not permanent. Expected to move as the story does."
-  },
-  {
-    id: "agenda",
-    label: "Agenda",
-    type: "text",
-    icon: "fa-bullseye",
-    color: "#fb923c",
-    persistent: false,
-    updatable: true,
-    placeholder: "What they are working toward right now",
-    hint: "Current, not permanent. Expected to move as the story does."
-  },
-  {
-    id: "secrets",
-    label: "Secrets",
-    type: "list",
-    icon: "fa-user-secret",
-    color: "#ef4444",
-    ownLine: true,
-    persistent: false,
-    updatable: true,
-    itemFormat: "Tier 1 (semi-public): [rumoured, or guessable with effort]",
-    placeholder: "One line per tier: Tier 2 (private) is known only to the inner circle, Tier 3 (buried) is the big one that drives unpredictable behaviour. Close with a Reveal hook: the pressure that could surface these.",
-    hint: "A list, so an update can add one secret or retire one without rewriting the rest."
-  },
-  {
-    id: "canonLock",
-    label: "Canon Lock",
-    type: "list",
-    icon: "fa-lock",
-    color: "#a855f7",
-    ownLine: true,
-    persistent: true,
-    updatable: false,
-    placeholder: "3\u20135 immutable facts that must never change across appearances \u2014 name, key relationships, defining marks, the buried secret",
-    hint: "Never updatable. A fact that can be revised is not a canon lock."
-  }
-];
-function npcFields() {
-  const nb = localProfile && localProfile.npcBank;
-  const list = nb && Array.isArray(nb.fields) && nb.fields.length ? nb.fields : NPC_DEFAULT_FIELDS;
-  return list.filter((f2) => f2 && f2.id && f2.label);
-}
-function npcFieldByRole(role) {
-  return npcFields().find((f2) => f2.system === role);
-}
-function npcBodyFields() {
-  return npcFields().filter((f2) => f2.system !== "name" && f2.system !== "vitals");
-}
-function npcVitalsFields() {
-  return npcFields().filter((f2) => f2.system === "vitals");
-}
-function npcUpdatableFields() {
-  return npcFields().filter((f2) => f2.updatable);
-}
-function npcFieldOps(f2) {
-  if (!f2 || !f2.updatable) return [];
-  return f2.type === "list" || f2.type === "longtext" ? ["+", "-", "~"] : ["~"];
-}
-function npcFieldAllowsOp(f2, op) {
-  return npcFieldOps(f2).includes(op);
-}
-function npcFieldSpec(f2) {
-  if (f2.type === "list") {
-    const lines = [`**${f2.label}:**`];
-    if (f2.placeholder) lines.push(`[${f2.placeholder}]`);
-    if (f2.itemFormat) {
-      lines.push(`* ${f2.itemFormat}`);
-      lines.push(`* [same format, one per line]`);
-    } else {
-      lines.push(`* [one per line]`);
-    }
-    return lines.join("\n");
-  }
-  return `**${f2.label}:** [${f2.placeholder || "value"}]`;
-}
-function npcPersistenceRule() {
-  const persistent = npcBodyFields().filter((f2) => f2.persistent && f2.system !== "imageTags");
-  if (!persistent.length) return "";
-  const names = persistent.map((f2) => f2.label).join(", ");
-  return [
-    `persistent_fields_rule: >`,
-    `  ${names} describe this person's ongoing life, not this scene.`,
-    `  Write each one as it would still be true at 2pm on an ordinary Tuesday,`,
-    `  months from now, with the current scene long over. A fact that only holds`,
-    `  inside this scene \u2014 where they are standing, what they are doing, who they`,
-    `  are with right now \u2014 belongs in none of them.`
-  ].join("\n");
-}
-function npcBuildDossierTemplate() {
-  const nameField = npcFieldByRole("name");
-  const vitals = npcVitalsFields();
-  const body = npcBodyFields();
-  const headerParts = [];
-  if (nameField) headerParts.push(`**${nameField.label}:** [${nameField.placeholder || "Full name"}]`);
-  vitals.forEach((f2) => headerParts.push(`**${f2.label}:** [${f2.placeholder || "value"}]`));
-  const header = headerParts.join(" | ");
-  const rows = body.map(npcFieldSpec).join("\n\n");
-  const nameAttr = nameField ? `[${nameField.placeholder || "Full Name"}]` : "[Full Name]";
-  return [
-    `<New_NPC name="${nameAttr}">`,
-    "",
-    header,
-    "",
-    rows,
-    "",
-    `</New_NPC>`
-  ].join("\n");
-}
-function replaceIndentedToken(text2, token, replacement) {
-  const re = new RegExp(`^([ \\t]*)${escapeRegex(token)}[ \\t]*$`, "m");
-  const m2 = text2.match(re);
-  if (!m2) return text2;
-  const pad = m2[1];
-  const body = String(replacement || "").split("\n").map((line) => line.trim() === "" ? "" : pad + line).join("\n");
-  return text2.replace(re, () => body);
-}
-function npcBuildDossierPrompt(rulesText) {
-  let out = String(rulesText || "");
-  out = replaceIndentedToken(out, "{{template}}", npcBuildDossierTemplate());
-  out = replaceIndentedToken(out, "{{persistenceRule}}", npcPersistenceRule());
-  return out;
-}
-function npcBuildUpdateTemplate() {
-  const updatable = npcUpdatableFields();
-  if (!updatable.length) return "";
-  const lines = [];
-  updatable.forEach((f2) => {
-    const ops = npcFieldOps(f2);
-    if (ops.includes("~")) lines.push(`~ ${f2.label}: [the replacement value for this whole field]`);
-    if (ops.includes("+")) lines.push(`+ ${f2.label}: [one new entry this scene established]`);
-    if (ops.includes("-")) lines.push(`- ${f2.label}: [enough of an existing entry's wording to identify which one]`);
-  });
-  return [
-    `<NPC_Update name="[Exact name as it appears in the NPC bank]">`,
-    ...lines,
-    `</NPC_Update>`
-  ].join("\n");
-}
-function npcBuildUpdatePrompt() {
-  const rules = npcBuildUpdateRules();
-  if (!rules) return "";
-  return `${rules}
-
-  template: |
-${npcBuildUpdateTemplate().split("\n").map((l2) => "    " + l2).join("\n")}
-`;
-}
-function npcBuildUpdateRules() {
-  const updatable = npcUpdatableFields();
-  if (!updatable.length) return "";
-  const single = updatable.filter((f2) => npcFieldOps(f2).length === 1);
-  const multi = updatable.filter((f2) => npcFieldOps(f2).length > 1);
-  const locked = npcBodyFields().filter((f2) => !f2.updatable && f2.system !== "imageTags");
-  const lines = [
-    "### NPC UPDATES:",
-    "  trigger: >",
-    "    Emit <NPC_Update> only when THIS scene changed something already on file",
-    "    for an NPC who already has a dossier. Omit the block entirely otherwise.",
-    "    Never restate information that did not change. One block per NPC.",
-    "",
-    `  updatable_fields: ${updatable.map((f2) => f2.label).join(", ")}`,
-    "",
-    "  operations:",
-    "    ~  replaces the field's whole contents.",
-    "    +  adds one new entry to a field that holds a list.",
-    "    -  removes one existing entry from a field that holds a list."
-  ];
-  const verb = (list) => list.length === 1 ? "holds" : "hold";
-  if (single.length) {
-    lines.push("", `    ${single.map((f2) => f2.label).join(", ")} ${verb(single)} a single value: use ~ only.`);
-  }
-  if (multi.length) {
-    lines.push(`    ${multi.map((f2) => f2.label).join(", ")} ${verb(multi)} a list: use +, - or ~.`);
-  }
-  if (locked.length) {
-    lines.push("", "  locked_fields: >", `    Never touch ${locked.map((f2) => f2.label).join(", ")}. Those are written once and fixed.`);
-  }
-  return lines.join("\n");
-}
-
 // src/shared/npc/updates.js
 function npcParseUpdateBlocks(text2) {
   const out = [];
@@ -29046,156 +29198,7 @@ function initProfile() {
   if (!extension_settings[extensionName].configPresets) {
     extension_settings[extensionName].configPresets = [];
   }
-  const defaults = {
-    mode: "balance",
-    personality: "engine",
-    v9Limits: { leanMin: 300, leanMax: 400, fullMin: 700, fullMax: 1200 },
-    toggles: { ooc: false, control: false },
-    aiTags: [],
-    aiGeneratedOptions: [],
-    aiRule: "",
-    customStyles: [],
-    activeStyleId: null,
-    storyConfig: {
-      enabled: false,
-      genre: "",
-      tone: "",
-      pov: "",
-      pace: "",
-      length: "",
-      difficulty: "",
-      friction: "",
-      npcDisposition: "",
-      explicitness: "",
-      narratorPresence: "",
-      focus: "",
-      culture: "",
-      era: "",
-      npcSpeechStyle: "",
-      notes: ""
-    },
-    dnRatio: {
-      enabled: false,
-      dialogue: 50
-    },
-    onomatopoeia: {
-      enabled: false,
-      useStyling: false
-    },
-    addons: [],
-    blocks: [],
-    // What sits inside the <Blocks> envelope, and in what order. `order` is
-    // membership as well as sequence: a block not listed is not emitted.
-    blockStack: {
-      order: [],
-      custom: [],
-      overrides: {}
-    },
-    // Fields for the stat blocks. Their templates are generated from these,
-    // so adding Jealousy or Mana is a setting, not a code change.
-    statBlocks: {
-      bonds: {
-        fields: [
-          { id: "mood", label: "Mood", type: "text", hint: "emotional surface" },
-          { id: "affection", label: "Affection", type: "meter", max: 100, start: 20 },
-          { id: "trust", label: "Trust", type: "meter", max: 100, start: 30 },
-          { id: "desire", label: "Desire", type: "meter", max: 100, start: 0 }
-        ]
-      },
-      sheet: {
-        fields: [
-          { id: "hp", label: "HP", type: "meter", max: 100, start: 100 },
-          { id: "stamina", label: "Stamina", type: "meter", max: 100, start: 100 },
-          { id: "gold", label: "Gold", type: "number", start: 0 },
-          { id: "status", label: "Status", type: "text", ownLine: true, hint: 'conditions, or "none"' },
-          { id: "skills", label: "Skills", type: "list", ownLine: true, hint: "Name rank, comma separated" },
-          { id: "inventory", label: "Inventory", type: "list", ownLine: true, hint: 'items, or "nothing"' }
-        ]
-      }
-    },
-    model: "cot-v1-english",
-    userNotes: "",
-    userLanguage: "",
-    userPronouns: "off",
-    devOverrides: {},
-    banList: [],
-    banListBackend: "direct",
-    banListCustomPrompts: null,
-    banListCustomPromptsEnabled: false,
-    customModes: [],
-    thinkEffort: "unspecified",
-    customThinkEffort: "100",
-    storyPlan: {
-      enabled: false,
-      backend: "direct",
-      triggerMode: "auto",
-      autoFreq: 10,
-      currentPlan: "",
-      customPrompts: null,
-      customPromptsEnabled: false,
-      contentRating: "none",
-      pacing: "natural",
-      primaryGenre: "drama",
-      flavorTags: [],
-      directorsNote: "",
-      unrestrictedContent: false,
-      lastTrackerState: "",
-      planMessageIndex: null
-    },
-    imageGen: {
-      enabled: false,
-      generatorBackend: "direct",
-      injectMode: "inline",
-      imageCount: 1,
-      comfyUrl: "http://127.0.0.1:8188",
-      currentWorkflowName: "",
-      selectedModel: "",
-      selectedLora: "",
-      selectedLora2: "",
-      selectedLora3: "",
-      selectedLora4: "",
-      selectedLoraWt: 1,
-      selectedLoraWt2: 1,
-      selectedLoraWt3: 1,
-      selectedLoraWt4: 1,
-      imgWidth: 1024,
-      imgHeight: 1024,
-      customNegative: "bad quality, blurry, worst quality, low quality",
-      customSeed: -1,
-      selectedSampler: "euler",
-      compressImages: true,
-      steps: 20,
-      cfg: 7,
-      denoise: 0.5,
-      clipSkip: 1,
-      promptTemplate: "illus_cinematic",
-      includeExamples: true,
-      directLanguage: false,
-      injectNpcTags: false,
-      promptExtra: "",
-      triggerMode: "always",
-      autoGenFreq: 1,
-      previewPrompt: false,
-      savedWorkflowStates: {},
-      customPrompts: null,
-      customPromptsEnabled: false
-    },
-    npcBank: {
-      enabled: false,
-      oocTrigger: false,
-      sendPortraitsToAi: false,
-      npcs: [],
-      // The dossier's shape. The prompt template, the parser, the card and
-      // the injected text are all generated from this, so adding a field
-      // is a setting the reader changes rather than a code change.
-      fields: JSON.parse(JSON.stringify(NPC_DEFAULT_FIELDS)),
-      customPrompts: null,
-      customPromptsEnabled: false,
-      scanDepth: 60,
-      ignoredNames: "",
-      injectionLimit: 3
-    }
-  };
+  const defaults = JSON.parse(JSON.stringify(DEFAULT_PROFILE));
   if (!extension_settings[extensionName].globalSettings) {
     extension_settings[extensionName].globalSettings = {
       promptPreview: false,
@@ -29522,7 +29525,8 @@ function pruneFutureData() {
 function saveProfileToMemory() {
   const key = getCharacterKey() || "default";
   if (_loadedProfileKey && key !== _loadedProfileKey) {
-    console.debug(`[Megumin-Suite] saveProfileToMemory declined: the profile in memory belongs to "${_loadedProfileKey}" but the active chat is now "${key}". Skipping the chat_metadata blocks and the settings write so this chat's data is not saved into another chat.`);
+    console.warn(`[Megumin Suite] Save DECLINED: the profile in memory belongs to "${_loadedProfileKey}" but the active chat is now "${key}". Nothing was written, so this chat's data is not saved into another chat.`);
+    toastr.warning("Settings were not saved \u2014 the open profile belongs to a different chat. Close and reopen the window.", "Megumin Suite");
     return;
   }
   _profileSavePending = false;
@@ -36244,8 +36248,12 @@ function setup(ctx2) {
   });
   buildLauncher(launcher, () => {
     openSettingsWindow();
-    updateCharacterDisplay();
-    switchTab(0);
+    (async () => {
+      await refreshContext();
+      await initProfile();
+      updateCharacterDisplay();
+      switchTab(0);
+    })().catch((err) => console.error("[Megumin Suite] could not open the settings window:", err));
   });
   bindWindowChrome();
   (async () => {
