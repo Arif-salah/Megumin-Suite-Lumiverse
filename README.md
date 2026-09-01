@@ -10,7 +10,7 @@
 
 **Megumin Suite** is a full-stack overhaul to how Lumiverse presets work. It replaces your preset, your NPC management, and your image generation — all in one extension.
 
-> 🔀 **Coming from the SillyTavern build?** Everything is here except **Memory Core** and the **Side Panel**. Lumiverse has its own long-term chat memory, and the Side Panel's trackers are all drawn in the chat card anyway. There are also no regex scripts to enable — the host strips the block tags itself.
+> 🔀 **Coming from the SillyTavern build?** Everything is here except **Memory Core** and the **Side Panel**. Lumiverse has its own long-term chat memory, and the Side Panel's trackers are all drawn in the chat card anyway.
 
 V10 is based on the following principle: **there are no villains and there are no good guys.** Every action of every character is based on their morals and they believe they are the ones who are right, thus leaving the decision of whose side to be on not to the plot but to the characters' actions. Conflict arises because of conflicting interests, not the villain being evil. In addition, the world is **alive**: it goes on and does not wait for you. Hours pass, people perform their everyday deeds, something happens beyond your view and when you least expect it, comes back to haunt you.
 
