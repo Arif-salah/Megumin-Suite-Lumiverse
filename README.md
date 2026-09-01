@@ -192,7 +192,7 @@ Every subsystem includes an **"Advanced: Edit Prompts"** panel:
      inert.
 4. Import the preset. Download it from
    [Presets/](https://github.com/Arif-salah/Megumin-Suite-Lumiverse/tree/main/Presets),
-   then in Lumiverse open **Presets → Import** and upload the JSON.
+   then in Lumiverse open **Loom → Import** and upload the JSON.
 5. Make sure the imported preset is the **active** one. The extension fills its
    placeholders on every generation.
 
