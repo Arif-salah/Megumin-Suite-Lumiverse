@@ -1,17 +1,18 @@
 {
-  "version": "9.1.0",
+  "version": "10.0",
   "name": "Megumin Suite",
   "identifier": "megumin_suite",
-  "author": "Kazuma ONIISAN",
+  "author": "KazumaONIISAN",
   "github": "https://github.com/Arif-salah/Megumin-Suite-Lumiverse",
   "homepage": "https://github.com/Arif-salah/Megumin-Suite-Lumiverse",
-  "description": "Megumin Suite ported to Lumiverse: V9 narrative engines, Story Config, tracker blocks, NPC tracking, ban lists, story planning, and image generation.",
+  "description": "Preset engine, story director, block trackers, NPC bank and image generation for Lumiverse.",
   "permissions": [
     "interceptor",
     "generation",
-    "chat_mutation",
     "chats",
+    "chat_mutation",
     "characters",
+    "personas",
     "image_gen",
     "images",
     "presets",
@@ -20,10 +21,6 @@
   ],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",
-  "minimum_lumiverse_version": "0.1.0",
-  "storage_seed_files": [
-    { "from": "img/", "to": "img/", "overwrite": false },
-    { "from": "Screenshots/", "to": "Screenshots/", "overwrite": false }
-  ],
-  "interceptorTimeoutMs": 30000
+  "interceptorTimeoutMs": 30000,
+  "minimum_lumiverse_version": "0.1.0"
 }
