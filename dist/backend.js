@@ -528,7 +528,11 @@ spindle.registerInterceptor(async (messages, context) => {
     const restored = built.map((m) => {
       if (m && m.__keepIndex !== undefined)
         return messages[m.__keepIndex];
-      return m;
+      if (!m)
+        return m;
+      const { __sourceIndex, ...edited } = m;
+      const original = Number.isInteger(__sourceIndex) && __sourceIndex >= 0 ? messages[__sourceIndex] : undefined;
+      return original ? { ...original, role: edited.role, content: edited.content } : edited;
     }).filter(Boolean);
     return toHostMessages(restored);
   } catch (e) {

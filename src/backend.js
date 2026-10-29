@@ -429,11 +429,15 @@ spindle.registerInterceptor(async (messages, context) => {
         // interceptor is how a generation is stopped here.
         if (built.length === 0 && messages.length > 0) throw new Error("Generation cancelled in the prompt preview.");
 
-        // A message the browser could not see (content was not a string) and
-        // left untouched comes back as null: restore the original.
+        // Restore host metadata by original index, even after insertions or deletions.
+        // Untouched multimodal messages keep their original content too.
         const restored = built.map((m) => {
             if (m && m.__keepIndex !== undefined) return messages[m.__keepIndex];
-            return m;
+            if (!m) return m;
+            const { __sourceIndex, ...edited } = m;
+            const original = Number.isInteger(__sourceIndex) && __sourceIndex >= 0
+                ? messages[__sourceIndex] : undefined;
+            return original ? { ...original, role: edited.role, content: edited.content } : edited;
         }).filter(Boolean);
 
         return toHostMessages(restored);

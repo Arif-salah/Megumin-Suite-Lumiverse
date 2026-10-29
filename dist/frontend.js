@@ -55451,7 +55451,7 @@ async function buildPrompt({ reqId, chatId, generationType, messages }) {
     }
     const work = messages.map((m, i) => ({ role: m.role, content: m.content ?? "", __i: i, __opaque: m.content === null }));
     await handlePromptInjection({ chat: work }, generationType);
-    const out = work.map((m) => m.__opaque && m.content === "" ? { __keepIndex: m.__i } : { role: m.role, content: m.content });
+    const out = work.map((m) => m.__opaque && m.content === "" ? { __keepIndex: m.__i } : { role: m.role, content: m.content, __sourceIndex: m.__i });
     notify("prompt:built", { reqId, messages: out });
   } catch (e) {
     if (String(e && e.message) !== "not ready")
